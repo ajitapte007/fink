@@ -1,0 +1,29 @@
+{
+  "name": "fink",
+  "version": "1.0.0",
+  "description": "Fink is a web-based tool for financial due diligence. It allows users to plot historical stock prices and various financial metrics for a given stock ticker, using data from the Alpha Vantage API.",
+  "main": "script.js",
+  "scripts": {
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js"
+  },
+  "jest": {
+    "transform": {},
+    "testEnvironment": "jsdom"
+  },
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ajitapte007/fink.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ajitapte007/fink/issues"
+  },
+  "homepage": "https://github.com/ajitapte007/fink#readme",
+  "devDependencies": {
+    "jest": "^30.0.2",
+    "jest-environment-jsdom": "^30.0.2"
+  }
+}

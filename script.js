@@ -17,6 +17,7 @@ const ratioSelectRadios = document.querySelectorAll('input[name="ratioSelect"]')
 
 let myChart; // Variable to hold the Chart.js instance
 let lastFetchedChartData = null; // Store last fetched and processed data
+let globalProcessedMetrics = {}; // Holds all processed metric data for a given request
 
 // LRU Cache for Alpha Vantage API calls
 const alphaVantageCache = new Map();
@@ -47,7 +48,7 @@ let alphaVantageAPIKnowledgeBase = {};
  * @property {boolean} is_plottable - Whether this metric should be plotted on the chart.
  * @property {boolean} [isTimeSeries] - Indicates if the source data is a time series (dates as keys).
  */
-const metricsConfig = [
+export const metricsConfig = [
     {
         id: 'price',
         label: 'Adjusted Close Price',
@@ -239,7 +240,7 @@ function hideLoadingSpinner() {
  * @param {string[]} path The array of keys/indices representing the path.
  * @returns {any|undefined} The value at the specified path, or undefined if not found.
  */
-function getNestedValue(obj, path) {
+export function getNestedValue(obj, path) {
     return path.reduce((acc, key) => (acc && acc.hasOwnProperty(key)) ? acc[key] : undefined, obj);
 }
 
@@ -270,15 +271,18 @@ function findValidDate(item, potentialDateKeys) {
  * @param {string} dateString A date string in YYYY-MM-DD format.
  * @returns {string} The date rounded to the end of the month in YYYY-MM-DD format.
  */
-function roundDateToEndOfMonth(dateString) {
-    const date = new Date(dateString);
+export function roundDateToEndOfMonth(dateString) {
+    // Appending 'T00:00:00Z' ensures the date is parsed as UTC midnight
+    const date = new Date(dateString + 'T00:00:00Z');
     if (isNaN(date.getTime())) {
         return null; // Handle invalid date strings
     }
-    const year = date.getFullYear();
-    const month = date.getMonth();
-    const lastDay = new Date(year, month + 1, 0); // Day 0 of next month is last day of current month
-    return lastDay.toISOString().slice(0, 10); // Format YYYY-MM-DD
+    // Go to the first day of the next month in UTC
+    date.setUTCMonth(date.getUTCMonth() + 1, 1);
+    // Go back one day (in milliseconds) to get the last day of the previous month
+    date.setTime(date.getTime() - 86400000); // 86400000ms = 1 day
+    
+    return date.toISOString().slice(0, 10); // Format YYYY-MM-DD
 }
 
 /**
@@ -402,6 +406,7 @@ function escapeRegExp(string) {
  * @returns {Promise<{datasets: Object, commonLabels: string[], chartTitle: string, xAxisLabel: string, yAxisLabels: string[]}>}
  */
 async function fetchAndProcessFinancialData(ticker, alphaVantageApiKey, selectedTimeframe) {
+    globalProcessedMetrics = {}; // Reset on each run
     appendToPapertrail('Step 1: Fetching all required Alpha Vantage data based on metrics configuration...');
     const fetchedRawData = {}; // Stores raw API responses keyed by function name
     const alphaVantageCalls = [];
@@ -645,7 +650,7 @@ async function fetchAndProcessFinancialData(ticker, alphaVantageApiKey, selected
  * @param {boolean} isDividend - True if calculating TTM for dividends (sum of last 4 quarters).
  * @returns {object} A new object with TTM values, keyed by date.
  */
-function calculateTTM(data, isDividend = false) {
+export function calculateTTM(data, isDividend = false) {
     const sortedDates = Object.keys(data).sort((a, b) => new Date(a) - new Date(b));
     const ttmData = {};
 
@@ -710,7 +715,7 @@ function calculateTTM(data, isDividend = false) {
  * @param {string[]} targetDates - Array of monthly date strings (YYYY-MM-DD) to align to.
  * @returns {object} Interpolated data keyed by the target dates.
  */
-function interpolateData(sourceData, targetDates) {
+export function interpolateData(sourceData, targetDates) {
     const interpolated = {};
     const sourceDates = Object.keys(sourceData).sort();
 
@@ -1012,16 +1017,18 @@ function replotFromCache() {
 }
 
 // Event Listeners
-document.addEventListener('DOMContentLoaded', () => {
-    initializeAlphaVantageDataKnowledgeBase();
-    fetchButton.addEventListener('click', plotData);
+if (typeof window !== 'undefined') {
+    window.addEventListener('DOMContentLoaded', () => {
+        initializeAlphaVantageDataKnowledgeBase();
+        fetchButton.addEventListener('click', plotData);
 
-    // Add listeners to UI controls to replot from cache
-    togglePriceCheckbox.addEventListener('change', replotFromCache);
-    ratioSelectRadios.forEach(radio => {
-        radio.addEventListener('change', replotFromCache);
+        // Add listeners to UI controls to replot from cache
+        togglePriceCheckbox.addEventListener('change', replotFromCache);
+        ratioSelectRadios.forEach(radio => {
+            radio.addEventListener('change', replotFromCache);
+        });
+
+        // We don't need a listener for timeframeSelect to replot from cache,
+        // as changing the timeframe requires a new data fetch.
     });
-
-    // We don't need a listener for timeframeSelect to replot from cache,
-    // as changing the timeframe requires a new data fetch.
-}); 
+} 

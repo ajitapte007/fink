@@ -25,6 +25,20 @@ Fink is a web-based tool for financial due diligence. It allows users to plot hi
 5.  Use the checkboxes and radio buttons to select which metrics to plot on the chart.
 6.  Click the "Plot Data" button. The chart will update dynamically.
 
+## Running Locally
+
+Because modern browsers have security restrictions that prevent loading JavaScript modules directly from the local filesystem (`file://`), you need to run a simple local web server to use this application.
+
+1.  **Install `http-server`:** If you don't have it, install it globally via npm:
+    ```bash
+    npm install -g http-server
+    ```
+2.  **Start the server:** Navigate to the project's root directory (`/Users/ajitapte/fink`) in your terminal and run the following command:
+    ```bash
+    http-server -p 8081 .
+    ```
+3.  **Access the application:** Open your web browser and go to `http://localhost:8081`.
+
 ## Project Structure
 
 The project is organized into three main files:
