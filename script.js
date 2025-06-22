@@ -153,6 +153,78 @@ export const metricsConfig = [
         type: 'derived_custom', // Custom derived, not necessarily TTM or ratio itself
         calculation_formula: 'annualRevenue / commonSharesOutstanding',
         is_plottable: false
+    },
+    {
+        id: 'revenues',
+        label: 'Revenues',
+        type: 'raw_fundamental',
+        source_function: 'INCOME_STATEMENT',
+        source_path: ['annualReports', 'totalRevenue'],
+        date_keys: 'fiscalDateEnding',
+        color: 'rgb(153, 102, 255)',
+        axis: 'y-ratio',
+        ui_radio_id: 'selectRevenues',
+        is_plottable: true,
+        isTimeSeries: false
+    },
+    {
+        id: 'netIncome',
+        label: 'Net Income',
+        type: 'raw_fundamental',
+        source_function: 'INCOME_STATEMENT',
+        source_path: ['annualReports', 'netIncome'],
+        date_keys: 'fiscalDateEnding',
+        color: 'rgb(255, 205, 86)',
+        axis: 'y-ratio',
+        ui_radio_id: 'selectNetIncome',
+        is_plottable: true,
+        isTimeSeries: false
+    },
+    {
+        id: 'annualEPS',
+        label: 'EPS (Annual)',
+        type: 'raw_fundamental',
+        source_function: 'EARNINGS',
+        source_path: ['annualEarnings', 'reportedEPS'],
+        date_keys: 'fiscalDateEnding',
+        color: 'rgb(75, 192, 192)',
+        axis: 'y-ratio',
+        ui_radio_id: 'selectEPS',
+        is_plottable: true,
+        isTimeSeries: false
+    },
+    {
+        id: 'capitalExpenditures',
+        label: 'Capital Expenditures',
+        type: 'raw_fundamental',
+        source_function: 'CASH_FLOW',
+        source_path: ['annualReports', 'capitalExpenditures'],
+        date_keys: 'fiscalDateEnding',
+        color: 'rgb(255, 99, 132)',
+        axis: 'y-ratio',
+        ui_radio_id: 'selectCapex',
+        is_plottable: true,
+        isTimeSeries: false
+    },
+    {
+        id: 'operatingCashflow',
+        label: 'Operating Cashflow',
+        type: 'raw_fundamental',
+        source_function: 'CASH_FLOW',
+        source_path: ['annualReports', 'operatingCashflow'],
+        date_keys: 'fiscalDateEnding',
+        is_plottable: false, // For calculation only
+        isTimeSeries: false
+    },
+    {
+        id: 'fcf',
+        label: 'Free Cash Flow',
+        type: 'derived_custom',
+        calculation_formula: 'operatingCashflow - capitalExpenditures',
+        color: 'rgb(54, 162, 235)',
+        axis: 'y-ratio',
+        ui_radio_id: 'selectFCF',
+        is_plottable: true
     }
 ];
 
@@ -406,275 +478,169 @@ function escapeRegExp(string) {
  * Fetches and processes financial data based on metricsConfig.
  * @param {string} ticker The stock ticker symbol.
  * @param {string} alphaVantageApiKey Your Alpha Vantage API key.
- * @param {string} selectedTimeframe '1', '5', '10', '20', or 'all' for years.
- * @returns {Promise<{datasets: Object, commonLabels: string[], chartTitle: string, xAxisLabel: string, yAxisLabels: string[]}>}
+ * @param {number} startYearAgo - How many years ago the data should start.
+ * @param {number} endYearAgo - How many years ago the data should end.
+ * @returns {Promise<object>}
  */
 async function fetchAndProcessFinancialData(ticker, alphaVantageApiKey, startYearAgo, endYearAgo) {
     globalProcessedMetrics = {}; // Reset on each run
-    appendToPapertrail('Step 1: Fetching all required Alpha Vantage data based on metrics configuration...');
-    const fetchedRawData = {}; // Stores raw API responses keyed by function name
+    appendToPapertrail('Step 1: Fetching all required Alpha Vantage data...');
+    const fetchedRawData = {};
     const alphaVantageCalls = [];
 
-    // Determine unique functions to fetch based on metricsConfig
     const functionsToFetch = new Set(metricsConfig.map(m => m.source_function).filter(Boolean));
 
     for (const func of Array.from(functionsToFetch)) {
         let url = `https://www.alphavantage.co/query?function=${func}&symbol=${ticker}&apikey=${alphaVantageApiKey}`;
         if (func === 'TIME_SERIES_MONTHLY_ADJUSTED') {
-            url += `&outputsize=full`; // Ensure full data for time series
+            url += `&outputsize=full`;
         }
 
         const cachedData = getFromCache(url);
         if (cachedData) {
             fetchedRawData[func] = cachedData;
-            appendToPapertrail(`Cache hit for ${func} (URL: ${url}).`);
         } else {
-            appendToPapertrail(`Cache miss for ${func}. Fetching from Alpha Vantage (URL: ${url}).`);
             alphaVantageCalls.push(
                 fetch(url)
-                    .then(response => {
-                        if (!response.ok) {
-                            throw new Error(`HTTP error! status: ${response.status} for ${func}`);
-                        }
-                        return response.json();
-                    })
+                    .then(response => response.json())
                     .then(data => {
                         if (data["Error Message"] || data["Note"]) {
-                            throw new Error(data["Error Message"] || data["Note"] || `Alpha Vantage API returned an error for ${func}.`);
+                            throw new Error(data["Error Message"] || data["Note"] || `API error for ${func}.`);
                         }
                         fetchedRawData[func] = data;
                         addToCache(url, data);
-                        appendToPapertrail(`Successfully fetched and cached raw data for ${func}.`);
                     })
                     .catch(error => {
-                        console.error(`Error fetching raw ${func} data from Alpha Vantage:`, error);
-                        appendToPapertrail(`Error fetching raw data for ${func}: ${error.message}`);
-                        fetchedRawData[func] = { error: `Failed to fetch data for ${func}: ${error.message}` };
+                        fetchedRawData[func] = { error: `Failed to fetch ${func}: ${error.message}` };
                     })
             );
         }
     }
     await Promise.all(alphaVantageCalls);
-    appendToPapertrail('Finished fetching all raw data from Alpha Vantage.');
 
-
-    // --- Extract Raw Metrics (without timeframe filtering yet) ---
-    appendToPapertrail('Step 2.1: Extracting raw metrics from fetched data (before timeframe filtering)...');
-    const extractedRawMetrics = {}; // Stores raw values for each metric ID, e.g., { 'price': { '2023-01-31': 150, ... } }
-
-    for (const metricConfig of metricsConfig.filter(m => m.type.startsWith('raw_'))) {
-        const rawDataForFunction = fetchedRawData[metricConfig.source_function];
-
-        // appendToPapertrail(`Debug: Raw data for function ${metricConfig.source_function} (ID: ${metricConfig.id}): ${JSON.stringify(rawDataForFunction).substring(0, 200)}...`);
-
-        if (!rawDataForFunction || rawDataForFunction.error) {
-            appendToPapertrail(`Warning: Skipping extraction for ${metricConfig.label} due to missing or errored raw data from ${metricConfig.source_function}.`);
-            extractedRawMetrics[metricConfig.id] = {}; // Ensure empty object if data is missing
-            continue;
-        }
-
-        let dataContainer = getNestedValue(rawDataForFunction, [metricConfig.source_path[0]]);
-
-        // appendToPapertrail(`Debug: Data container for ${metricConfig.label} (path: ${metricConfig.source_path[0]}): ${JSON.stringify(dataContainer).substring(0, 200)}...`);
-
-        if (!dataContainer) {
-            appendToPapertrail(`Warning: Data container not found for ${metricConfig.label} (Path: ${metricConfig.source_path[0]}). Raw data: ${JSON.stringify(rawDataForFunction).substring(0, 100)}...`);
-            extractedRawMetrics[metricConfig.id] = {};
-            continue;
-        }
-
-        const tempExtracted = {};
-        if (metricConfig.isTimeSeries) {
-            const containerKeys = Object.keys(dataContainer).sort((a, b) => new Date(a) - new Date(b));
-            for (const dateStr of containerKeys) {
-                const value = parseFloat(getNestedValue(dataContainer[dateStr], metricConfig.source_path.slice(1)));
-                if (!isNaN(value)) tempExtracted[dateStr] = value;
-            }
-        } else {
-            const entries = Array.isArray(dataContainer) ? dataContainer : [];
-            const processedEntries = [];
-            entries.forEach(item => {
-                const dateStr = findValidDate(item, metricConfig.date_keys);
-                if (dateStr) {
-                    const value = parseFloat(getNestedValue(item, metricConfig.source_path.slice(1)));
-                    if (!isNaN(value)) {
-                        processedEntries.push({ date: dateStr, value: value });
-                    } else {
-                        appendToPapertrail(`Skipping invalid value for ${metricConfig.label} on date ${dateStr}. Raw value: ${getNestedValue(item, metricConfig.source_path.slice(1))}`);
-                    }
-                }
-            });
-            // For array-based data, we don't use tempExtracted, we assign the array directly
-            extractedRawMetrics[metricConfig.id] = processedEntries;
-            appendToPapertrail(`Extracted raw ${metricConfig.label} data: ${processedEntries.length} points.`);
-            continue; // Skip the object assignment below
-        }
-        extractedRawMetrics[metricConfig.id] = tempExtracted;
-        appendToPapertrail(`Extracted raw ${metricConfig.label} data: ${Object.keys(tempExtracted).length} points.`);
-    }
-
-    // --- Apply Timeframe Filtering to ALL extracted raw data ---
-    appendToPapertrail(`Step 2.2: Applying timeframe filter...`);
-    const filteredRawMetrics = {};
+    appendToPapertrail('Step 2: Extracting and filtering raw metrics...');
+    const extractedRawMetrics = {};
     const now = new Date();
     const startDate = new Date(new Date().setFullYear(now.getFullYear() - startYearAgo));
     const endDate = new Date(new Date().setFullYear(now.getFullYear() - endYearAgo));
-    appendToPapertrail(`Filtering data between ${startDate.toLocaleDateString()} and ${endDate.toLocaleDateString()}.`);
 
+    for (const metricConfig of metricsConfig.filter(m => m.type.startsWith('raw_'))) {
+        const rawData = fetchedRawData[metricConfig.source_function];
+        if (!rawData || rawData.error) continue;
 
-    for (const metricId in extractedRawMetrics) {
-        const data = extractedRawMetrics[metricId];
-        let filteredData;
+        let dataContainer = getNestedValue(rawData, [metricConfig.source_path[0]]);
+        if (!dataContainer) continue;
 
-        if (Array.isArray(data)) {
-            // Filter array-based data
-            filteredData = data.filter(item => {
-                const itemDate = new Date(item.date);
-                return itemDate >= startDate && itemDate <= endDate;
-            });
-        } else {
-            // Filter object-based data
-            const filteredObj = {};
-            for (const dateStr in data) {
+        const tempExtracted = {};
+        if (metricConfig.isTimeSeries) {
+            Object.keys(dataContainer).forEach(dateStr => {
                 const itemDate = new Date(dateStr);
                 if (itemDate >= startDate && itemDate <= endDate) {
-                    filteredObj[dateStr] = data[dateStr];
+                    const value = parseFloat(getNestedValue(dataContainer[dateStr], metricConfig.source_path.slice(1)));
+                    if (!isNaN(value)) tempExtracted[dateStr] = value;
                 }
-            }
-            filteredData = filteredObj;
+            });
+            extractedRawMetrics[metricConfig.id] = tempExtracted;
+        } else {
+            const processedEntries = [];
+            (Array.isArray(dataContainer) ? dataContainer : []).forEach(item => {
+                const dateStr = findValidDate(item, metricConfig.date_keys);
+                if (dateStr) {
+                    const itemDate = new Date(dateStr);
+                    if (itemDate >= startDate && itemDate <= endDate) {
+                        const value = parseFloat(getNestedValue(item, metricConfig.source_path.slice(1)));
+                        if (!isNaN(value)) processedEntries.push({ date: dateStr, value });
+                    }
+                }
+            });
+            extractedRawMetrics[metricConfig.id] = processedEntries;
         }
-
-        filteredRawMetrics[metricId] = filteredData;
-        const pointCount = Array.isArray(filteredData) ? filteredData.length : Object.keys(filteredData).length;
-        appendToPapertrail(`Filtered ${metricId}: ${Array.isArray(data) ? data.length : Object.keys(data).length} -> ${pointCount} points.`);
     }
 
+    appendToPapertrail('Step 3: Processing derived metrics...');
+    const processedMetrics = { ...extractedRawMetrics };
 
-    // --- Process Derived Metrics ---
-    appendToPapertrail('Step 3: Processing derived metrics (TTM, ratios, etc.)...');
-    const processedMetrics = { ...filteredRawMetrics }; // Start with filtered raw metrics
+    // TTM Metrics
+    metricsConfig.filter(m => m.type === 'derived_ttm').forEach(mc => {
+        processedMetrics[mc.id] = calculateTTM(processedMetrics[mc.calculation_basis]);
+    });
 
-    // Calculate all TTM metrics first
-    for (const metricConfig of metricsConfig.filter(m => m.type === 'derived_ttm')) {
-        const basisMetricId = metricConfig.calculation_basis;
-        const sourceData = processedMetrics[basisMetricId]; // Use already filtered data
-        if (!sourceData) {
-            appendToPapertrail(`Warning: Cannot calculate TTM for ${metricConfig.label}; source data '${basisMetricId}' not found.`);
-            continue;
-        }
-
-        const ttmResult = calculateTTM(sourceData);
-        processedMetrics[metricConfig.id] = ttmResult;
-        const pointCount = Array.isArray(ttmResult) ? ttmResult.length : Object.keys(ttmResult).length;
-        appendToPapertrail(`Calculated TTM for ${metricConfig.label}: ${pointCount} points.`);
-    }
-    
-    // All derived metrics that are not ratios are calculated here.
-    // This part is simplified. It assumes metrics are calculated from others, but doesn't handle date alignment well.
-    // Let's remove the special 'derived_custom' and just calculate it before the loop.
-    const rpsMetric = metricsConfig.find(m => m.id === 'rps');
-    if (rpsMetric) {
-        const [numeratorId, denominatorId] = rpsMetric.calculation_formula.split(' / ');
-        const numeratorData = processedMetrics[numeratorId];
-        const denominatorData = processedMetrics[denominatorId];
-        if (numeratorData && denominatorData) {
+    // Custom Derived Metrics (RPS, FCF)
+    const calculateCustomMetric = (metricId, formula, operation) => {
+        const metricConf = metricsConfig.find(m => m.id === metricId);
+        if (!metricConf) return;
+        
+        const [id1, id2] = formula.split(operation === 'subtract' ? ' - ' : ' / ');
+        const data1 = processedMetrics[id1.trim()];
+        const data2 = processedMetrics[id2.trim()];
+        
+        if (data1 && data2) {
             const result = {};
-            const numMap = new Map(numeratorData.map(item => [new Date(item.date).getFullYear(), item.value]));
-            const denMap = new Map(denominatorData.map(item => [new Date(item.date).getFullYear(), item.value]));
-            
-            for(const [year, numValue] of numMap.entries()) {
-                const denValue = denMap.get(year);
-                if (denValue && denValue !== 0) {
-                    const originalDate = numeratorData.find(item => new Date(item.date).getFullYear() === year).date;
-                    result[originalDate] = numValue / denValue;
+            const map1 = new Map(data1.map(item => [new Date(item.date).getFullYear(), item.value]));
+            const map2 = new Map(data2.map(item => [new Date(item.date).getFullYear(), item.value]));
+
+            for (const [year, val1] of map1.entries()) {
+                const val2 = map2.get(year);
+                if (typeof val2 !== 'undefined') {
+                    const originalDate = data1.find(item => new Date(item.date).getFullYear() === year).date;
+                    if (operation === 'subtract') {
+                        result[originalDate] = val1 - val2;
+                    } else if (val2 !== 0) {
+                        result[originalDate] = val1 / val2;
+                    }
                 }
             }
-            processedMetrics['rps'] = result;
-            appendToPapertrail(`Calculated rps: ${Object.keys(result).length} points.`);
+            processedMetrics[metricId] = result;
         }
-    }
+    };
 
-    // Now calculate all ratio metrics
-    // We need a common set of dates to perform ratio calculations.
-    // Price data is monthly, so other data should be aligned to it.
+    calculateCustomMetric('rps', 'annualRevenue / commonSharesOutstanding', 'divide');
+    calculateCustomMetric('fcf', 'operatingCashflow - capitalExpenditures', 'subtract');
+
+    // Interpolation
     const priceDates = Object.keys(processedMetrics['price'] || {}).sort();
-    if (priceDates.length === 0) {
-        appendToPapertrail('Error: No price data available. Cannot calculate ratios.');
-        displayMessage('No price data available for the selected timeframe. Ratios cannot be calculated.', 'error');
-    }
+    if (priceDates.length === 0) throw new Error('No price data available for timeframe.');
 
-    // Interpolate all necessary metric data to align with price dates
     const interpolatedMetrics = {};
-    const metricsToInterpolate = new Set(metricsConfig.filter(m => m.is_plottable || m.id === 'ttmEps' || m.id === 'rps').map(m => m.id));
+    const metricsToInterpolate = new Set(metricsConfig.filter(m => m.is_plottable || ['ttmEps', 'rps', 'fcf'].includes(m.id)).map(m => m.id));
     
     for (const metricId in processedMetrics) {
         if (!metricsToInterpolate.has(metricId) || metricId === 'price') {
             interpolatedMetrics[metricId] = processedMetrics[metricId];
             continue;
         }
-
-        const data = processedMetrics[metricId];
-        if (data) {
-            // Ensure data is in array format before interpolating
-            const dataAsArray = Array.isArray(data) ? data : Object.entries(data).map(([date, value]) => ({ date, value }));
-            interpolatedMetrics[metricId] = interpolateData(dataAsArray, priceDates);
-        } else {
-            interpolatedMetrics[metricId] = []; // Use empty array for missing data
-        }
+        const dataAsArray = Array.isArray(processedMetrics[metricId]) ? processedMetrics[metricId] : Object.entries(processedMetrics[metricId]).map(([date, value]) => ({ date, value }));
+        interpolatedMetrics[metricId] = interpolateData(dataAsArray, priceDates);
     }
-    appendToPapertrail('Interpolated necessary metrics to align with monthly price dates.');
-
-
-    // Recalculate ratios using the new interpolated data
-    for (const metricConfig of metricsConfig.filter(m => m.type === 'derived_ratio')) {
-        const [numeratorId, denominatorId] = metricConfig.calculation_formula.split(' / ').map(s => s.trim());
-        const numeratorData = interpolatedMetrics[numeratorId];
-        const denominatorData = interpolatedMetrics[denominatorId];
-        if (!numeratorData || !denominatorData) continue;
+    
+    // Ratios
+    metricsConfig.filter(m => m.type === 'derived_ratio').forEach(mc => {
+        const [numId, denId] = mc.calculation_formula.split(' / ').map(s => s.trim());
+        const numData = interpolatedMetrics[numId];
+        const denData = interpolatedMetrics[denId];
+        if (!numData || !denData) return;
         
-        // Convert interpolated data to Maps for efficient lookups, handling both array and object formats
-        const convertToMap = (data) => {
-            if (Array.isArray(data)) {
-                return new Map(data.map(item => [item.date, item.value]));
-            }
-            // Handle object-based data like 'price'
-            return new Map(Object.entries(data));
-        };
+        const numMap = new Map(Array.isArray(numData) ? numData.map(i => [i.date, i.value]) : Object.entries(numData));
+        const denMap = new Map(Array.isArray(denData) ? denData.map(i => [i.date, i.value]) : Object.entries(denData));
+        
+        const ratioResult = priceDates.map(date => {
+            const num = numMap.get(date);
+            const den = denMap.get(date);
+            return (num != null && den != null && den !== 0) ? { date, value: num / den } : { date, value: null };
+        });
+        interpolatedMetrics[mc.id] = ratioResult;
+    });
 
-        const numeratorMap = convertToMap(numeratorData);
-        const denominatorMap = convertToMap(denominatorData);
-
-        const ratioResult = []; // Ratios are also arrays now
-        for (const date of priceDates) {
-            const num = numeratorMap.get(date);
-            const den = denominatorMap.get(date);
-            if (num !== undefined && num !== null && den !== undefined && den !== null && den !== 0) {
-                ratioResult.push({ date: date, value: num / den });
-            } else {
-                ratioResult.push({ date: date, value: null }); // Push null to keep series aligned
-            }
-        }
-        interpolatedMetrics[metricConfig.id] = ratioResult;
-        appendToPapertrail(`Calculated ratio ${metricConfig.label}: ${ratioResult.filter(r => r.value !== null).length} points.`);
-    }
-
-
-    // --- Final Data Preparation for Charting ---
     appendToPapertrail('Step 4: Preparing final data for charting...');
-    globalProcessedMetrics = interpolatedMetrics; // FIX: Store fully interpolated data
+    globalProcessedMetrics = interpolatedMetrics;
     const { datasets, commonLabels } = prepareChartData(getSelectedMetricsForPlotting());
-
-    const chartTitle = `${ticker.toUpperCase()} Financial Analysis`;
-    const xAxisLabel = 'Date';
-    const yAxisLabels = { 'y-price': 'Price (USD)', 'y-ratio': 'Ratio / Value' };
-
 
     return {
         datasets,
         commonLabels,
-        chartTitle: chartTitle,
-        xAxisLabel: xAxisLabel,
-        yAxisLabels: yAxisLabels
+        chartTitle: `${ticker.toUpperCase()} Financial Analysis`,
+        xAxisLabel: 'Date',
+        yAxisLabels: { 'y-price': 'Price (USD)', 'y-ratio': 'Ratio / Value' }
     };
 }
 
@@ -750,10 +716,23 @@ function getSelectedMetricsForPlotting() {
 
     const selectedRadio = document.querySelector('input[name="ratioSelect"]:checked');
     if (selectedRadio) {
-        // Find the metric in metricsConfig that corresponds to this radio button
-        const metric = metricsConfig.find(m => m.ui_radio_id === selectedRadio.id);
+        const metricId = selectedRadio.value;
+        const metric = metricsConfig.find(m => m.id === metricId || m.ui_radio_id === selectedRadio.id);
         if (metric) {
             selected.push(metric.id);
+        } else {
+            // Fallback for new metrics that might not have a direct ui_radio_id link yet
+            switch (metricId) {
+                case 'REVENUES': selected.push('revenues'); break;
+                case 'NET_INCOME': selected.push('netIncome'); break;
+                case 'EPS': selected.push('annualEPS'); break;
+                case 'CAPEX': selected.push('capitalExpenditures'); break;
+                case 'FCF': selected.push('fcf'); break;
+                case 'SO': selected.push('commonSharesOutstanding'); break;
+                case 'DIVIDENDS': selected.push('ttmDividends'); break;
+                case 'PE': selected.push('peRatio'); break;
+                case 'PS': selected.push('psRatio'); break;
+            }
         }
     }
 
@@ -860,6 +839,15 @@ function createOrUpdateChart(chartData) {
                             return value.toLocaleString();
                         case 'ttmDividends':
                             return `$${value.toFixed(2)}`;
+                        case 'annualEPS':
+                             return value.toFixed(2);
+                        case 'revenues':
+                        case 'netIncome':
+                        case 'capitalExpenditures':
+                        case 'fcf':
+                            if (Math.abs(value) >= 1e9) return `${(value / 1e9).toFixed(1)}B`;
+                            if (Math.abs(value) >= 1e6) return `${(value / 1e6).toFixed(1)}M`;
+                            return value.toLocaleString();
                         default: // Ratios
                             return value.toFixed(2);
                     }
@@ -899,6 +887,15 @@ function createOrUpdateChart(chartData) {
                                     return `${label}${value.toFixed(2)}`;
                                 case 'Adjusted Close Price':
                                     return `${label}$${value.toFixed(2)}`;
+                                case 'EPS (Annual)':
+                                    return `${label}${value.toFixed(2)}`;
+                                case 'Revenues':
+                                case 'Net Income':
+                                case 'Capital Expenditures':
+                                case 'Free Cash Flow':
+                                    if (Math.abs(value) >= 1e9) return `${label}${(value / 1e9).toFixed(2)}B`;
+                                    if (Math.abs(value) >= 1e6) return `${label}${(value / 1e6).toFixed(2)}M`;
+                                    return `${label}${value.toLocaleString()}`;
                                 default:
                                     return `${label}${value.toLocaleString()}`;
                             }
