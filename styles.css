@@ -1,23 +1,57 @@
 body {
     font-family: 'Inter', sans-serif;
     background-color: #f0f4f8; /* Light blue-gray background */
+    margin: 0;
+    padding: 0;
+}
+
+.main-container {
     display: flex;
-    justify-content: center;
-    align-items: flex-start;
-    min-height: 100vh;
-    padding: 20px;
+    width: 100vw;
+    height: 100vh;
+}
+
+.panel {
+    padding: 25px;
     box-sizing: border-box;
+    height: 100%;
+    overflow-y: auto; /* Add scroll for smaller screens */
 }
-.container {
+
+.left-panel {
+    flex: 0 0 380px; /* Fixed width for the left panel */
     background-color: #ffffff;
-    padding: 30px;
-    border-radius: 15px;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
-    max-width: 900px;
-    width: 100%;
-    text-align: center;
-    border: 1px solid #e2e8f0; /* Light border */
+    border-right: 1px solid #e2e8f0;
+    display: flex;
+    flex-direction: column;
 }
+
+.controls-scroller {
+    flex-grow: 1;
+    overflow-y: auto;
+    min-height: 0;
+}
+
+.right-panel {
+    flex: 1 1 auto; /* The right panel will take up the remaining space */
+    background-color: #f9fafb;
+    display: flex;
+    flex-direction: column;
+}
+
+.right-panel-header {
+    flex-shrink: 0;
+}
+
+h1 {
+    margin-bottom: 10px;
+}
+
+.message {
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+
 input, select, button {
     border-radius: 8px; /* Slightly more rounded */
     padding: 12px 18px;
@@ -39,12 +73,6 @@ button:active {
     transform: translateY(0);
     box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
 }
-.message {
-    margin-top: 20px;
-    padding: 10px;
-    border-radius: 8px;
-    font-weight: 500;
-}
 .message.error {
     background-color: #fee2e2; /* Light red */
     color: #ef4444; /* Red text */
@@ -60,39 +88,74 @@ button:active {
     color: #2563eb; /* Blue text */
     border: 1px solid #93c5fd;
 }
-/* Style for the canvas container to make it responsive */
+.checkbox-item, .radio-item {
+    display: flex;
+    align-items: center;
+    font-size: 16px;
+    color: #4a5568;
+    margin-bottom: 10px; /* Add some space between items */
+    padding: 8px;
+    border-radius: 6px;
+    transition: background-color 0.2s ease-in-out;
+}
+.radio-item:hover, .checkbox-item:hover {
+    background-color: #f7fafc;
+}
+.checkbox-item input[type="checkbox"], .radio-item input[type="radio"] {
+    margin-right: 8px;
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+}
+.metric-group {
+    margin-bottom: 20px;
+    padding: 15px;
+    background-color: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+}
 .chart-container {
     position: relative;
-    height: 500px; /* Fixed height, but width is fluid */
     width: 100%;
-    margin-top: 20px;
-    border-radius: 10px;
-    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
-    background-color: white; /* Ensure background is white for transparency */
+    height: calc(100% - 150px);
 }
 #priceChart {
     /* Canvas will fill its parent container */
-    max-width: 100%;
-    max-height: 100%;
+    width: 100% !important;
+    height: 100% !important;
+}
+.papertrail-details {
+    margin-top: 1rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    overflow-y: auto;
+}
+.papertrail-summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: #4a5568;
+    padding: 8px 12px;
+    border-radius: 6px;
+    background-color: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    transition: background-color 0.2s ease-in-out;
+}
+.papertrail-summary:hover {
+    background-color: #e2e8f0;
+}
+.papertrail-details[open] > .papertrail-summary {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    background-color: #e2e8f0;
 }
 .papertrail-log {
-    text-align: left;
-    margin-top: 20px;
-    padding: 15px;
-    background-color: #e9ecef;
-    border-radius: 8px;
-    font-size: 0.9em;
-    color: #495057;
-    border: 1px solid #ced4da;
-    max-height: 200px;
-    overflow-y: auto;
-    word-wrap: break-word;
-}
-.papertrail-log p {
-    margin-bottom: 5px;
-}
-.papertrail-log p:last-child {
-    margin-bottom: 0;
+    margin-top: 0;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+    border: 1px solid #e2e8f0;
+    border-top: none;
+    max-height: 150px;
+    background-color: #f8fafc;
 }
 #loadingSpinner {
     border: 4px solid rgba(0, 0, 0, .1);
@@ -109,21 +172,28 @@ button:active {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
 }
-.checkbox-container, .radio-container {
-    display: flex;
-    justify-content: center;
-    gap: 20px;
-    margin-bottom: 15px;
+
+/* Make layout responsive on smaller screens */
+@media (max-width: 768px) {
+    .main-container {
+        flex-direction: column;
+        height: auto;
+    }
+    .left-panel {
+        flex: 1 0 auto; /* Allow panel to grow */
+        border-right: none;
+        border-bottom: 1px solid #e2e8f0;
+    }
 }
-.checkbox-item, .radio-item {
-    display: flex;
-    align-items: center;
-    font-size: 16px;
-    color: #4a5568;
+
+.api-key-link {
+    font-size: 0.8rem;
+    color: #4b5563;
+    text-decoration: none;
+    display: inline-block;
+    margin-top: 4px;
 }
-.checkbox-item input[type="checkbox"], .radio-item input[type="radio"] {
-    margin-right: 8px;
-    width: 18px;
-    height: 18px;
-    border-radius: 4px;
+
+.api-key-link:hover {
+    text-decoration: underline;
 }
