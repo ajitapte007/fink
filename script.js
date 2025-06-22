@@ -488,17 +488,22 @@ async function fetchAndProcessFinancialData(ticker, alphaVantageApiKey, selected
             }
         } else {
             const entries = Array.isArray(dataContainer) ? dataContainer : [];
+            const processedEntries = [];
             entries.forEach(item => {
                 const dateStr = findValidDate(item, metricConfig.date_keys);
                 if (dateStr) {
                     const value = parseFloat(getNestedValue(item, metricConfig.source_path.slice(1)));
                     if (!isNaN(value)) {
-                        tempExtracted[dateStr] = value;
+                        processedEntries.push({ date: dateStr, value: value });
                     } else {
                         appendToPapertrail(`Skipping invalid value for ${metricConfig.label} on date ${dateStr}. Raw value: ${getNestedValue(item, metricConfig.source_path.slice(1))}`);
                     }
                 }
             });
+            // For array-based data, we don't use tempExtracted, we assign the array directly
+            extractedRawMetrics[metricConfig.id] = processedEntries;
+            appendToPapertrail(`Extracted raw ${metricConfig.label} data: ${processedEntries.length} points.`);
+            continue; // Skip the object assignment below
         }
         extractedRawMetrics[metricConfig.id] = tempExtracted;
         appendToPapertrail(`Extracted raw ${metricConfig.label} data: ${Object.keys(tempExtracted).length} points.`);
@@ -517,14 +522,25 @@ async function fetchAndProcessFinancialData(ticker, alphaVantageApiKey, selected
 
     for (const metricId in extractedRawMetrics) {
         const data = extractedRawMetrics[metricId];
-        const filteredData = {};
-        for (const dateStr in data) {
-            if (new Date(dateStr) >= filterDate) {
-                filteredData[dateStr] = data[dateStr];
+        let filteredData;
+
+        if (Array.isArray(data)) {
+            // Filter array-based data
+            filteredData = data.filter(item => new Date(item.date) >= filterDate);
+        } else {
+            // Filter object-based data
+            const filteredObj = {};
+            for (const dateStr in data) {
+                if (new Date(dateStr) >= filterDate) {
+                    filteredObj[dateStr] = data[dateStr];
+                }
             }
+            filteredData = filteredObj;
         }
+
         filteredRawMetrics[metricId] = filteredData;
-        appendToPapertrail(`Filtered ${metricId}: ${Object.keys(data).length} -> ${Object.keys(filteredData).length} points.`);
+        const pointCount = Array.isArray(filteredData) ? filteredData.length : Object.keys(filteredData).length;
+        appendToPapertrail(`Filtered ${metricId}: ${Array.isArray(data) ? data.length : Object.keys(data).length} -> ${pointCount} points.`);
     }
 
 
@@ -541,47 +557,35 @@ async function fetchAndProcessFinancialData(ticker, alphaVantageApiKey, selected
             continue;
         }
 
-        const ttmResult = calculateTTM(sourceData, metricConfig.id === 'ttmDividends');
+        const ttmResult = calculateTTM(sourceData);
         processedMetrics[metricConfig.id] = ttmResult;
-        appendToPapertrail(`Calculated TTM for ${metricConfig.label}: ${Object.keys(ttmResult).length} points.`);
+        const pointCount = Array.isArray(ttmResult) ? ttmResult.length : Object.keys(ttmResult).length;
+        appendToPapertrail(`Calculated TTM for ${metricConfig.label}: ${pointCount} points.`);
     }
     
-    // Calculate custom derived metrics (like 'rps') before they are needed by ratios
-    for (const metricConfig of metricsConfig.filter(m => m.type === 'derived_custom')) {
-        const formula = metricConfig.calculation_formula;
-        // For custom derivations, we need to find a way to align dates.
-        // Let's assume for rps, we align annual revenue with annual shares outstanding.
-        // This part can get complex. A simple approach: align by year.
-        const [numeratorId, denominatorId] = formula.split(' / ');
+    // All derived metrics that are not ratios are calculated here.
+    // This part is simplified. It assumes metrics are calculated from others, but doesn't handle date alignment well.
+    // Let's remove the special 'derived_custom' and just calculate it before the loop.
+    const rpsMetric = metricsConfig.find(m => m.id === 'rps');
+    if (rpsMetric) {
+        const [numeratorId, denominatorId] = rpsMetric.calculation_formula.split(' / ');
         const numeratorData = processedMetrics[numeratorId];
         const denominatorData = processedMetrics[denominatorId];
-
-        if (!numeratorData || !denominatorData) {
-            appendToPapertrail(`Warning: Missing data for custom derived metric ${metricConfig.label}. Numerator: ${numeratorId}, Denominator: ${denominatorId}`);
-            continue;
-        }
-
-        const result = {};
-        const numeratorDates = Object.keys(numeratorData).sort();
-        const denominatorDates = Object.keys(denominatorData).sort();
-
-        // This is a simplified alignment logic. It may need to be more robust.
-        // It aligns based on matching years, taking the latest data for each year if multiple exist.
-        const denominatorMap = denominatorDates.reduce((acc, date) => {
-            const year = new Date(date).getFullYear();
-            acc[year] = denominatorData[date];
-            return acc;
-        }, {});
-
-        for(const date of numeratorDates) {
-            const year = new Date(date).getFullYear();
-            if (denominatorMap[year] && denominatorMap[year] !== 0) {
-                result[date] = numeratorData[date] / denominatorMap[year];
+        if (numeratorData && denominatorData) {
+            const result = {};
+            const numMap = new Map(numeratorData.map(item => [new Date(item.date).getFullYear(), item.value]));
+            const denMap = new Map(denominatorData.map(item => [new Date(item.date).getFullYear(), item.value]));
+            
+            for(const [year, numValue] of numMap.entries()) {
+                const denValue = denMap.get(year);
+                if (denValue && denValue !== 0) {
+                    const originalDate = numeratorData.find(item => new Date(item.date).getFullYear() === year).date;
+                    result[originalDate] = numValue / denValue;
+                }
             }
+            processedMetrics['rps'] = result;
+            appendToPapertrail(`Calculated rps: ${Object.keys(result).length} points.`);
         }
-
-        processedMetrics[metricConfig.id] = result;
-        appendToPapertrail(`Calculated custom derived metric ${metricConfig.label}: ${Object.keys(result).length} points.`);
     }
 
     // Now calculate all ratio metrics
@@ -595,13 +599,21 @@ async function fetchAndProcessFinancialData(ticker, alphaVantageApiKey, selected
 
     // Interpolate all necessary metric data to align with price dates
     const interpolatedMetrics = {};
+    const metricsToInterpolate = new Set(metricsConfig.filter(m => m.is_plottable || m.id === 'ttmEps' || m.id === 'rps').map(m => m.id));
+    
     for (const metricId in processedMetrics) {
-        // We only need to interpolate data that will be used in ratios or plotted directly.
-        // Let's interpolate everything except price itself for simplicity here.
-        if (metricId !== 'price' && processedMetrics[metricId]) {
-            interpolatedMetrics[metricId] = interpolateData(processedMetrics[metricId], priceDates);
+        if (!metricsToInterpolate.has(metricId) || metricId === 'price') {
+            interpolatedMetrics[metricId] = processedMetrics[metricId];
+            continue;
+        }
+
+        const data = processedMetrics[metricId];
+        if (data) {
+            // Ensure data is in array format before interpolating
+            const dataAsArray = Array.isArray(data) ? data : Object.entries(data).map(([date, value]) => ({ date, value }));
+            interpolatedMetrics[metricId] = interpolateData(dataAsArray, priceDates);
         } else {
-            interpolatedMetrics[metricId] = processedMetrics[metricId]; // Keep price data as is
+            interpolatedMetrics[metricId] = []; // Use empty array for missing data
         }
     }
     appendToPapertrail('Interpolated necessary metrics to align with monthly price dates.');
@@ -610,17 +622,34 @@ async function fetchAndProcessFinancialData(ticker, alphaVantageApiKey, selected
     // Recalculate ratios using the new interpolated data
     for (const metricConfig of metricsConfig.filter(m => m.type === 'derived_ratio')) {
         const [numeratorId, denominatorId] = metricConfig.calculation_formula.split(' / ').map(s => s.trim());
-        const numeratorData = interpolatedMetrics[numeratorId], denominatorData = interpolatedMetrics[denominatorId];
+        const numeratorData = interpolatedMetrics[numeratorId];
+        const denominatorData = interpolatedMetrics[denominatorId];
         if (!numeratorData || !denominatorData) continue;
-        const ratioResult = {};
+        
+        // Convert interpolated data to Maps for efficient lookups, handling both array and object formats
+        const convertToMap = (data) => {
+            if (Array.isArray(data)) {
+                return new Map(data.map(item => [item.date, item.value]));
+            }
+            // Handle object-based data like 'price'
+            return new Map(Object.entries(data));
+        };
+
+        const numeratorMap = convertToMap(numeratorData);
+        const denominatorMap = convertToMap(denominatorData);
+
+        const ratioResult = []; // Ratios are also arrays now
         for (const date of priceDates) {
-            const num = numeratorData[date], den = denominatorData[date];
-            if (num !== undefined && den !== undefined && den !== 0 && isFinite(num) && isFinite(den)) {
-                ratioResult[date] = num / den;
+            const num = numeratorMap.get(date);
+            const den = denominatorMap.get(date);
+            if (num !== undefined && num !== null && den !== undefined && den !== null && den !== 0) {
+                ratioResult.push({ date: date, value: num / den });
+            } else {
+                ratioResult.push({ date: date, value: null }); // Push null to keep series aligned
             }
         }
-        interpolatedMetrics[metricConfig.id] = ratioResult; // FIX: store in interpolatedMetrics
-        appendToPapertrail(`Calculated ratio ${metricConfig.label}: ${Object.keys(ratioResult).length} points.`);
+        interpolatedMetrics[metricConfig.id] = ratioResult;
+        appendToPapertrail(`Calculated ratio ${metricConfig.label}: ${ratioResult.filter(r => r.value !== null).length} points.`);
     }
 
 
@@ -646,64 +675,28 @@ async function fetchAndProcessFinancialData(ticker, alphaVantageApiKey, selected
 
 /**
  * Calculates Trailing Twelve Months (TTM) for a given quarterly or event-based dataset.
- * @param {object} data - An object where keys are date strings (YYYY-MM-DD) and values are numbers.
- * @param {boolean} isDividend - True if calculating TTM for dividends (sum of last 4 quarters).
- * @returns {object} A new object with TTM values, keyed by date.
+ * This is now simplified to sum the last 4 reported data points.
+ * @param {Array<object>} data - An array of objects, e.g., [{date: 'YYYY-MM-DD', value: 123.45}].
+ * @returns {Array<object>} A new array with TTM values.
  */
-export function calculateTTM(data, isDividend = false) {
-    const sortedDates = Object.keys(data).sort((a, b) => new Date(a) - new Date(b));
-    const ttmData = {};
+export function calculateTTM(data) {
+    if (!data || data.length < 4) {
+        return [];
+    }
 
-    if (sortedDates.length < 1) {
-        return ttmData;
+    const sortedData = [...data].sort((a, b) => new Date(a.date) - new Date(b.date));
+    const ttmData = [];
+
+    for (let i = 3; i < sortedData.length; i++) {
+        const currentEntry = sortedData[i];
+        const p1 = sortedData[i].value;
+        const p2 = sortedData[i - 1].value;
+        const p3 = sortedData[i - 2].value;
+        const p4 = sortedData[i - 3].value;
+        const ttmSum = p1 + p2 + p3 + p4;
+        ttmData.push({ date: currentEntry.date, value: ttmSum });
     }
     
-    if (isDividend) {
-        // For dividends, we sum up amounts over the last 12 months for each date point.
-        // This requires aligning with a monthly series later, so we will do a simple TTM calc here.
-        const monthlySums = {}; // Aggregate dividends by month
-        for (const dateStr of sortedDates) {
-            const date = new Date(dateStr);
-            const year = date.getFullYear();
-            const month = date.getMonth();
-            const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
-            monthlySums[monthKey] = (monthlySums[monthKey] || 0) + data[dateStr];
-        }
-
-        const sortedMonths = Object.keys(monthlySums).sort();
-        for (let i = 0; i < sortedMonths.length; i++) {
-            let ttmSum = 0;
-            const currentMonthDate = new Date(sortedMonths[i] + '-01');
-            const twelveMonthsAgo = new Date(currentMonthDate);
-            twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 11);
-
-            // Sum up all months in the TTM window
-            for (let j = 0; j <= i; j++) {
-                 const monthToConsider = new Date(sortedMonths[j] + '-01');
-                 if (monthToConsider >= twelveMonthsAgo && monthToConsider <= currentMonthDate) {
-                     ttmSum += monthlySums[sortedMonths[j]];
-                 }
-            }
-            // Use the end of the month for the date key
-            const lastDayOfMonth = new Date(currentMonthDate.getFullYear(), currentMonthDate.getMonth() + 1, 0);
-            ttmData[lastDayOfMonth.toISOString().slice(0, 10)] = ttmSum;
-        }
-
-    } else { // For quarterly data like EPS
-        if (sortedDates.length < 4) {
-            // Not enough data for a full TTM calculation
-            return ttmData;
-        }
-        for (let i = 3; i < sortedDates.length; i++) {
-            const currentQuarterDate = sortedDates[i];
-            const q1 = data[sortedDates[i]];
-            const q2 = data[sortedDates[i - 1]];
-            const q3 = data[sortedDates[i - 2]];
-            const q4 = data[sortedDates[i - 3]];
-            const ttmSum = q1 + q2 + q3 + q4;
-            ttmData[currentQuarterDate] = ttmSum;
-        }
-    }
     return ttmData;
 }
 
@@ -711,56 +704,30 @@ export function calculateTTM(data, isDividend = false) {
 /**
  * Interpolates financial data (like annual or quarterly) to a monthly frequency.
  * Uses forward-fill logic.
- * @param {object} sourceData - Data to interpolate, keyed by date.
+ * @param {Array<object>} sourceData - Data to interpolate, e.g., [{date: 'YYYY-MM-DD', value: 100}].
  * @param {string[]} targetDates - Array of monthly date strings (YYYY-MM-DD) to align to.
- * @returns {object} Interpolated data keyed by the target dates.
+ * @returns {Array<object>} Interpolated data, e.g., [{date: 'YYYY-MM-DD', value: 100}].
  */
 export function interpolateData(sourceData, targetDates) {
-    const interpolated = {};
-    const sourceDates = Object.keys(sourceData).sort();
-
-    if (sourceDates.length === 0) {
-        return interpolated;
+    if (!sourceData || !targetDates || sourceData.length === 0 || targetDates.length === 0) {
+        return targetDates ? targetDates.map(date => ({ date, value: null })) : [];
     }
 
-    let lastValue = null;
+    const sortedSource = [...sourceData].sort((a, b) => new Date(a.date) - new Date(b.date));
+    const interpolated = [];
+    
     let sourceIndex = 0;
+    let lastValue = null;
 
     for (const targetDate of targetDates) {
-        // Find the most recent source data point that is on or before the target date
-        while (sourceIndex < sourceDates.length && new Date(sourceDates[sourceIndex]) <= new Date(targetDate)) {
-            lastValue = sourceData[sourceDates[sourceIndex]];
+        // Find the most recent source data point that is on or before the target date.
+        // The source data point must have a date less than or equal to the target date.
+        while (sourceIndex < sortedSource.length && new Date(sortedSource[sourceIndex].date) <= new Date(targetDate)) {
+            lastValue = sortedSource[sourceIndex].value;
             sourceIndex++;
         }
-        
-        if (lastValue !== null) {
-            interpolated[targetDate] = lastValue;
-        }
+        interpolated.push({ date: targetDate, value: lastValue });
     }
-    
-    // After finding the first value, the loop continues from where it left off.
-    // To ensure the first few months get a value if the first data point is later,
-    // we do a backward pass. This is a bit of a simplification.
-    // A better approach is to ensure the first `lastValue` is found correctly.
-    if (Object.keys(interpolated).length > 0) {
-        let firstAvailableValue = null;
-        for (const date of targetDates) {
-            if (interpolated[date] !== undefined) {
-                firstAvailableValue = interpolated[date];
-                break;
-            }
-        }
-        if (firstAvailableValue !== null) {
-            for (const date of targetDates) {
-                if (interpolated[date] === undefined) {
-                    interpolated[date] = firstAvailableValue;
-                } else {
-                    break; // Stop once we hit the already filled values
-                }
-            }
-        }
-    }
-
 
     return interpolated;
 }
@@ -797,6 +764,7 @@ function prepareChartData(selectedMetrics) {
 
     appendToPapertrail(`Preparing chart for: ${selectedMetrics.join(', ')}`);
     const datasetsForChart = [];
+    // Price is still an object, so this is our source of truth for labels
     const commonLabels = Object.keys(globalProcessedMetrics['price'] || {}).sort();
 
     for (const metricId of selectedMetrics) {
@@ -806,7 +774,18 @@ function prepareChartData(selectedMetrics) {
             appendToPapertrail(`Warning: No data for ${metricId}. Skipping.`);
             continue;
         }
-        const alignedData = commonLabels.map(label => data[label] !== undefined ? data[label] : null);
+
+        let dataMap;
+        if (Array.isArray(data)) {
+            // Convert array data to a Map for efficient lookup
+            dataMap = new Map(data.map(item => [item.date, item.value]));
+        } else {
+            // Handle object-based data (like 'price')
+            dataMap = new Map(Object.entries(data));
+        }
+
+        const alignedData = commonLabels.map(label => dataMap.get(label) ?? null);
+
         datasetsForChart.push({
             label: metricConfig.label,
             data: alignedData,

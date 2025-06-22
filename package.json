@@ -4,7 +4,7 @@
   "description": "Fink is a web-based tool for financial due diligence. It allows users to plot historical stock prices and various financial metrics for a given stock ticker, using data from the Alpha Vantage API.",
   "main": "script.js",
   "scripts": {
-    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js"
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --findRelatedTests script.test.js"
   },
   "jest": {
     "transform": {},
