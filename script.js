@@ -2,6 +2,10 @@
 const tickerInput = document.getElementById('tickerInput');
 const alphaVantageApiKeyInput = document.getElementById('alphaVantageApiKey');
 const timeframeSelect = document.getElementById('timeframeSelect');
+const leftSlider = document.getElementById('leftSlider');
+const rightSlider = document.getElementById('rightSlider');
+const yearRangeLabel = document.getElementById('year-range-label');
+const sliderTrack = document.querySelector('.slider-track');
 const fetchButton = document.getElementById('fetchButton');
 const messageDisplay = document.getElementById('message');
 const priceChartCanvas = document.getElementById('priceChart');
@@ -405,7 +409,7 @@ function escapeRegExp(string) {
  * @param {string} selectedTimeframe '1', '5', '10', '20', or 'all' for years.
  * @returns {Promise<{datasets: Object, commonLabels: string[], chartTitle: string, xAxisLabel: string, yAxisLabels: string[]}>}
  */
-async function fetchAndProcessFinancialData(ticker, alphaVantageApiKey, selectedTimeframe) {
+async function fetchAndProcessFinancialData(ticker, alphaVantageApiKey, startYearAgo, endYearAgo) {
     globalProcessedMetrics = {}; // Reset on each run
     appendToPapertrail('Step 1: Fetching all required Alpha Vantage data based on metrics configuration...');
     const fetchedRawData = {}; // Stores raw API responses keyed by function name
@@ -510,15 +514,13 @@ async function fetchAndProcessFinancialData(ticker, alphaVantageApiKey, selected
     }
 
     // --- Apply Timeframe Filtering to ALL extracted raw data ---
-    appendToPapertrail(`Step 2.2: Applying timeframe filter for the last ${selectedTimeframe} year(s) to all extracted raw metrics...`);
+    appendToPapertrail(`Step 2.2: Applying timeframe filter...`);
     const filteredRawMetrics = {};
-    let filterDate = new Date(0); // This is the start of the timeframe filter
+    const now = new Date();
+    const startDate = new Date(new Date().setFullYear(now.getFullYear() - startYearAgo));
+    const endDate = new Date(new Date().setFullYear(now.getFullYear() - endYearAgo));
+    appendToPapertrail(`Filtering data between ${startDate.toLocaleDateString()} and ${endDate.toLocaleDateString()}.`);
 
-    if (selectedTimeframe !== 'all') {
-        const yearsAgo = parseInt(selectedTimeframe);
-        filterDate = new Date();
-        filterDate.setFullYear(filterDate.getFullYear() - yearsAgo);
-    }
 
     for (const metricId in extractedRawMetrics) {
         const data = extractedRawMetrics[metricId];
@@ -526,12 +528,16 @@ async function fetchAndProcessFinancialData(ticker, alphaVantageApiKey, selected
 
         if (Array.isArray(data)) {
             // Filter array-based data
-            filteredData = data.filter(item => new Date(item.date) >= filterDate);
+            filteredData = data.filter(item => {
+                const itemDate = new Date(item.date);
+                return itemDate >= startDate && itemDate <= endDate;
+            });
         } else {
             // Filter object-based data
             const filteredObj = {};
             for (const dateStr in data) {
-                if (new Date(dateStr) >= filterDate) {
+                const itemDate = new Date(dateStr);
+                if (itemDate >= startDate && itemDate <= endDate) {
                     filteredObj[dateStr] = data[dateStr];
                 }
             }
@@ -916,7 +922,10 @@ async function plotData() {
 
     const ticker = tickerInput.value.trim().toUpperCase();
     const alphaVantageApiKey = alphaVantageApiKeyInput.value.trim();
-    const timeframe = timeframeSelect.value;
+    
+    // Convert slider position to "years ago"
+    const startYearAgo = 20 - parseInt(leftSlider.value);
+    const endYearAgo = 20 - parseInt(rightSlider.value);
 
     if (!ticker || !alphaVantageApiKey) {
         displayMessage('Ticker and Alpha Vantage API Key are required.', 'error');
@@ -925,18 +934,11 @@ async function plotData() {
     }
 
     try {
-        const chartData = await fetchAndProcessFinancialData(ticker, alphaVantageApiKey, timeframe);
-        lastFetchedChartData = chartData; // Cache the processed data
-
-        if (chartData.datasets.length === 0) {
-            displayMessage('No data available to plot for the selected metrics and timeframe. Check papertrail for details.', 'error');
-            // Destroy any old chart if no data is available now
-            if (myChart) {
-                myChart.destroy();
-            }
-        } else {
+        const chartData = await fetchAndProcessFinancialData(ticker, alphaVantageApiKey, startYearAgo, endYearAgo);
+        if (chartData) {
             createOrUpdateChart(chartData);
-            displayMessage('Data plotted successfully.', 'success');
+            lastFetchedChartData = chartData; // Cache the successful chart data
+            displayMessage('Chart updated successfully.', 'success');
         }
     } catch (error) {
         console.error("An error occurred during plotting:", error);
@@ -949,50 +951,11 @@ async function plotData() {
 
 // Function to replot based on UI changes without re-fetching
 function replotFromCache() {
-    if (!lastFetchedChartData) {
-        appendToPapertrail("No cached data to replot. Please fetch data first.");
-        return;
+    if (lastFetchedChartData) {
+        const { datasets, commonLabels } = prepareChartData(getSelectedMetricsForPlotting());
+        createOrUpdateChart({ ...lastFetchedChartData, datasets, commonLabels });
+        appendToPapertrail('Re-plotted metrics from cached data.');
     }
-    
-    appendToPapertrail("Re-plotting from cached data based on new UI selections...");
-
-    // Get the newly selected metrics
-    const selectedMetrics = getSelectedMetricsForPlotting();
-    const originalDatasets = lastFetchedChartData.datasets;
-    
-    // We need to re-create the datasets from the original `processedMetrics` data
-    // because `lastFetchedChartData.datasets` only contains the previously selected datasets.
-    // This is a bug in the original design. For now, we will work with what we have,
-    // which means we can only show/hide what was originally fetched and processed.
-    // A better implementation would be to store `processedMetrics` globally.
-
-    // Let's filter the originally prepared datasets based on the new selection.
-    // This requires us to know which dataset corresponds to which metric ID.
-    // We can add the ID to the dataset object when creating it.
-    
-    // --- Let's correct this by re-creating the datasets from scratch if we have the full processed data ---
-    // The current `lastFetchedChartData` only has the *final* datasets, not the full pool of processed data.
-    // This is a key bug. Let's assume for now we just trigger a full re-fetch and process.
-    // This is inefficient but will work until we refactor the data flow.
-    appendToPapertrail("Limitation: Re-plotting from cache is not fully implemented. Triggering a new plot...");
-    plotData();
-
-
-    // The code below would be the ideal implementation if `processedMetrics` were stored.
-    /*
-    const datasetsForChart = [];
-    const allProcessedData = lastFetchedChartData.allProcessedData; // Assuming we store this
-
-    for (const metricId of selectedMetrics) {
-        const metricConfig = metricsConfig.find(m => m.id === metricId);
-        const data = allProcessedData[metricId];
-        // ... build dataset as in fetchAndProcessFinancialData ...
-    }
-
-    const newChartData = { ...lastFetchedChartData, datasets: datasetsForChart };
-    createOrUpdateChart(newChartData);
-    displayMessage('Chart updated from cache.', 'success');
-    */
 }
 
 // Event Listeners
@@ -1009,5 +972,38 @@ if (typeof window !== 'undefined') {
 
         // We don't need a listener for timeframeSelect to replot from cache,
         // as changing the timeframe requires a new data fetch.
+
+        // Add event listeners to slider controls
+        function updateSliderAppearance() {
+            const min = parseInt(leftSlider.min);
+            const max = parseInt(leftSlider.max);
+            let leftValue = parseInt(leftSlider.value);
+            let rightValue = parseInt(rightSlider.value);
+
+            // Ensure left slider doesn't cross the right one
+            if (leftValue > rightValue) {
+                [leftValue, rightValue] = [rightValue, leftValue];
+                leftSlider.value = leftValue;
+                rightSlider.value = rightValue;
+            }
+            
+            const leftPercent = ((leftValue - min) / (max - min)) * 100;
+            const rightPercent = ((rightValue - min) / (max - min)) * 100;
+
+            sliderTrack.style.background = `linear-gradient(to right, #e2e8f0 ${leftPercent}%, #3b82f6 ${leftPercent}%, #3b82f6 ${rightPercent}%, #e2e8f0 ${rightPercent}%)`;
+            
+            const currentYear = new Date().getFullYear();
+            // Convert slider position to year
+            const startYear = currentYear - (20 - leftValue);
+            const endYear = currentYear - (20 - rightValue);
+
+            yearRangeLabel.textContent = `Start: ${startYear} | End: ${endYear}`;
+        }
+
+        leftSlider.addEventListener('input', updateSliderAppearance);
+        rightSlider.addEventListener('input', updateSliderAppearance);
+
+        // Initial call to set slider appearance
+        document.addEventListener('DOMContentLoaded', updateSliderAppearance);
     });
 } 
