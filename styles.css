@@ -1,0 +1,129 @@
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: #f0f4f8; /* Light blue-gray background */
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    min-height: 100vh;
+    padding: 20px;
+    box-sizing: border-box;
+}
+.container {
+    background-color: #ffffff;
+    padding: 30px;
+    border-radius: 15px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+    max-width: 900px;
+    width: 100%;
+    text-align: center;
+    border: 1px solid #e2e8f0; /* Light border */
+}
+input, select, button {
+    border-radius: 8px; /* Slightly more rounded */
+    padding: 12px 18px;
+    margin-bottom: 15px;
+    font-size: 16px;
+    border: 1px solid #cbd5e1; /* Gray border */
+    transition: all 0.2s ease-in-out;
+}
+input:focus, select:focus {
+    outline: none;
+    border-color: #3b82f6; /* Blue focus */
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+}
+button:hover {
+    background-color: #2563eb; /* Darker blue on hover */
+    transform: translateY(-2px);
+}
+button:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
+}
+.message {
+    margin-top: 20px;
+    padding: 10px;
+    border-radius: 8px;
+    font-weight: 500;
+}
+.message.error {
+    background-color: #fee2e2; /* Light red */
+    color: #ef4444; /* Red text */
+    border: 1px solid #fca5a5;
+}
+.message.success {
+    background-color: #d1fae5; /* Light green */
+    color: #10b981; /* Green text */
+    border: 1px solid #6ee7b7;
+}
+.message.info {
+    background-color: #e0f2fe; /* Light blue */
+    color: #2563eb; /* Blue text */
+    border: 1px solid #93c5fd;
+}
+/* Style for the canvas container to make it responsive */
+.chart-container {
+    position: relative;
+    height: 500px; /* Fixed height, but width is fluid */
+    width: 100%;
+    margin-top: 20px;
+    border-radius: 10px;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+    background-color: white; /* Ensure background is white for transparency */
+}
+#priceChart {
+    /* Canvas will fill its parent container */
+    max-width: 100%;
+    max-height: 100%;
+}
+.papertrail-log {
+    text-align: left;
+    margin-top: 20px;
+    padding: 15px;
+    background-color: #e9ecef;
+    border-radius: 8px;
+    font-size: 0.9em;
+    color: #495057;
+    border: 1px solid #ced4da;
+    max-height: 200px;
+    overflow-y: auto;
+    word-wrap: break-word;
+}
+.papertrail-log p {
+    margin-bottom: 5px;
+}
+.papertrail-log p:last-child {
+    margin-bottom: 0;
+}
+#loadingSpinner {
+    border: 4px solid rgba(0, 0, 0, .1);
+    border-left-color: #3b82f6;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    animation: spin 1s linear infinite;
+    display: none;
+    margin: 0 auto 15px auto;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+.checkbox-container, .radio-container {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    margin-bottom: 15px;
+}
+.checkbox-item, .radio-item {
+    display: flex;
+    align-items: center;
+    font-size: 16px;
+    color: #4a5568;
+}
+.checkbox-item input[type="checkbox"], .radio-item input[type="radio"] {
+    margin-right: 8px;
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+}
