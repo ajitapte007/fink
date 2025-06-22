@@ -48,8 +48,10 @@ h1 {
 }
 
 .message {
-    margin-top: 10px;
-    margin-bottom: 10px;
+    margin-top: 2px;
+    margin-bottom: 2px;
+    padding-top: 2px;
+    padding-bottom: 2px;
 }
 
 input, select, button {
@@ -93,8 +95,8 @@ button:active {
     align-items: center;
     font-size: 16px;
     color: #4a5568;
-    margin-bottom: 10px; /* Add some space between items */
-    padding: 8px;
+    margin-bottom: 5px; /* Add some space between items */
+    padding: 2px;
     border-radius: 6px;
     transition: background-color 0.2s ease-in-out;
 }
@@ -108,8 +110,8 @@ button:active {
     border-radius: 4px;
 }
 .metric-group {
-    margin-bottom: 20px;
-    padding: 15px;
+    margin-bottom: 10px;
+    padding: 5px;
     background-color: #f8fafc;
     border: 1px solid #e2e8f0;
     border-radius: 8px;
@@ -117,36 +119,12 @@ button:active {
 .chart-container {
     position: relative;
     width: 100%;
-    height: calc(100% - 150px);
+    height: calc(100% - 100px);
 }
 #priceChart {
     /* Canvas will fill its parent container */
     width: 100% !important;
     height: 100% !important;
-}
-.papertrail-details {
-    margin-top: 1rem;
-    border: 1px solid #e5e7eb;
-    border-radius: 0.5rem;
-    overflow-y: auto;
-}
-.papertrail-summary {
-    cursor: pointer;
-    font-weight: 600;
-    color: #4a5568;
-    padding: 8px 12px;
-    border-radius: 6px;
-    background-color: #f1f5f9;
-    border: 1px solid #e2e8f0;
-    transition: background-color 0.2s ease-in-out;
-}
-.papertrail-summary:hover {
-    background-color: #e2e8f0;
-}
-.papertrail-details[open] > .papertrail-summary {
-    border-bottom-left-radius: 0;
-    border-bottom-right-radius: 0;
-    background-color: #e2e8f0;
 }
 .papertrail-log {
     margin-top: 0;
@@ -155,17 +133,18 @@ button:active {
     border: 1px solid #e2e8f0;
     border-top: none;
     max-height: 150px;
+    min-height: 50px;
     background-color: #f8fafc;
 }
 #loadingSpinner {
     border: 4px solid rgba(0, 0, 0, .1);
     border-left-color: #3b82f6;
     border-radius: 50%;
-    width: 24px;
-    height: 24px;
+    width: 16px;
+    height: 16px;
     animation: spin 1s linear infinite;
     display: none;
-    margin: 0 auto 15px auto;
+    margin: 0 auto 5px auto;
 }
 
 @keyframes spin {
