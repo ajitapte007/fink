@@ -128,6 +128,16 @@ export const metricsConfig = [
         is_plottable: true
     },
     {
+        id: 'dividendYieldTTM',
+        label: 'Dividend Yield (TTM)',
+        type: 'derived_ratio',
+        calculation_formula: 'ttmDividends / price',
+        color: 'rgb(40, 167, 69)',
+        axis: 'y-ratio',
+        ui_radio_id: 'selectDividendYield',
+        is_plottable: true
+    },
+    {
         id: 'peRatio',
         label: 'PE Ratio',
         type: 'derived_ratio',
@@ -145,6 +155,16 @@ export const metricsConfig = [
         color: 'rgb(54, 162, 235)',
         axis: 'y-ratio',
         ui_radio_id: 'selectPSRatio',
+        is_plottable: true
+    },
+    {
+        id: 'pFcfRatio',
+        label: 'P/FCF Ratio',
+        type: 'derived_ratio',
+        calculation_formula: 'price / fcfPerShare',
+        color: 'rgb(111, 66, 193)',
+        axis: 'y-ratio',
+        ui_radio_id: 'selectPFCFRatio',
         is_plottable: true
     },
     {
@@ -225,6 +245,13 @@ export const metricsConfig = [
         axis: 'y-ratio',
         ui_radio_id: 'selectFCF',
         is_plottable: true
+    },
+    {
+        id: 'fcfPerShare',
+        label: 'FCF Per Share',
+        type: 'derived_custom',
+        calculation_formula: 'fcf / commonSharesOutstanding',
+        is_plottable: false
     }
 ];
 
@@ -576,17 +603,35 @@ async function fetchAndProcessFinancialData(ticker, alphaVantageApiKey, startYea
         
         if (data1 && data2) {
             const result = {};
-            const map1 = new Map(data1.map(item => [new Date(item.date).getFullYear(), item.value]));
-            const map2 = new Map(data2.map(item => [new Date(item.date).getFullYear(), item.value]));
+            
+            const toMap = (data) => new Map(
+                Array.isArray(data) 
+                    ? data.map(item => [new Date(item.date).getFullYear(), item.value]) 
+                    : Object.entries(data).map(([date, value]) => [new Date(date).getFullYear(), value])
+            );
+
+            const map1 = toMap(data1);
+            const map2 = toMap(data2);
 
             for (const [year, val1] of map1.entries()) {
                 const val2 = map2.get(year);
                 if (typeof val2 !== 'undefined') {
-                    const originalDate = data1.find(item => new Date(item.date).getFullYear() === year).date;
-                    if (operation === 'subtract') {
-                        result[originalDate] = val1 - val2;
-                    } else if (val2 !== 0) {
-                        result[originalDate] = val1 / val2;
+                    // Find original date from whichever data source is an array, or fall back
+                    const originalDateSource = Array.isArray(data1) ? data1 : (Array.isArray(data2) ? data2 : null);
+                    let originalDate;
+                    if (originalDateSource) {
+                       originalDate = originalDateSource.find(item => new Date(item.date).getFullYear() === year).date;
+                    } else {
+                        // If both are objects, we have to find the date by key (less reliable)
+                        originalDate = Object.keys(data1).find(date => new Date(date).getFullYear() === year);
+                    }
+
+                    if (originalDate) {
+                        if (operation === 'subtract') {
+                            result[originalDate] = val1 - val2;
+                        } else if (val2 !== 0) {
+                            result[originalDate] = val1 / val2;
+                        }
                     }
                 }
             }
@@ -596,13 +641,14 @@ async function fetchAndProcessFinancialData(ticker, alphaVantageApiKey, startYea
 
     calculateCustomMetric('rps', 'annualRevenue / commonSharesOutstanding', 'divide');
     calculateCustomMetric('fcf', 'operatingCashflow - capitalExpenditures', 'subtract');
+    calculateCustomMetric('fcfPerShare', 'fcf / commonSharesOutstanding', 'divide');
 
     // Interpolation
     const priceDates = Object.keys(processedMetrics['price'] || {}).sort();
     if (priceDates.length === 0) throw new Error('No price data available for timeframe.');
 
     const interpolatedMetrics = {};
-    const metricsToInterpolate = new Set(metricsConfig.filter(m => m.is_plottable || ['ttmEps', 'rps', 'fcf'].includes(m.id)).map(m => m.id));
+    const metricsToInterpolate = new Set(metricsConfig.filter(m => m.is_plottable || ['ttmEps', 'rps', 'fcf', 'fcfPerShare'].includes(m.id)).map(m => m.id));
     
     for (const metricId in processedMetrics) {
         if (!metricsToInterpolate.has(metricId) || metricId === 'price') {
@@ -732,6 +778,8 @@ function getSelectedMetricsForPlotting() {
                 case 'DIVIDENDS': selected.push('ttmDividends'); break;
                 case 'PE': selected.push('peRatio'); break;
                 case 'PS': selected.push('psRatio'); break;
+                case 'PFCF': selected.push('pFcfRatio'); break;
+                case 'DIVYIELD': selected.push('dividendYieldTTM'); break;
             }
         }
     }
@@ -841,6 +889,8 @@ function createOrUpdateChart(chartData) {
                             return `$${value.toFixed(2)}`;
                         case 'annualEPS':
                              return value.toFixed(2);
+                        case 'dividendYieldTTM':
+                            return `${(value * 100).toFixed(2)}%`;
                         case 'revenues':
                         case 'netIncome':
                         case 'capitalExpenditures':
@@ -848,7 +898,16 @@ function createOrUpdateChart(chartData) {
                             if (Math.abs(value) >= 1e9) return `${(value / 1e9).toFixed(1)}B`;
                             if (Math.abs(value) >= 1e6) return `${(value / 1e6).toFixed(1)}M`;
                             return value.toLocaleString();
-                        default: // Ratios
+                        case 'PE Ratio':
+                        case 'PS Ratio':
+                            return value.toFixed(2);
+                        case 'P/FCF Ratio':
+                            return value.toFixed(2);
+                        case 'Dividend Yield (TTM)':
+                            return `${(value * 100).toFixed(2)}%`;
+                        case 'Adjusted Close Price':
+                            return `${value.toFixed(2)}`;
+                        default:
                             return value.toFixed(2);
                     }
                 }
@@ -870,34 +929,47 @@ function createOrUpdateChart(chartData) {
                     intersect: false,
                     callbacks: {
                         label: function(context) {
-                            let label = context.dataset.label || '';
-                            if (label) label += ': ';
+                            let originalLabel = context.dataset.label || '';
                             let value = context.parsed.y;
-                            if (value === null) return `${label}N/A`;
                             
-                            switch (context.dataset.label) {
+                            const yAxisID = context.dataset.yAxisID;
+                            let displayLabel = originalLabel;
+                            if (yAxisID === 'y-price') {
+                                displayLabel += ' (left)';
+                            } else if (yAxisID === 'y-ratio') {
+                                displayLabel += ' (right)';
+                            }
+
+                            if (value === null) return `${displayLabel}: N/A`;
+                            
+                            // Use originalLabel for the switch, and displayLabel for the output
+                            switch (originalLabel) {
                                 case 'Shares Outstanding':
-                                    if (Math.abs(value) >= 1e9) return `${label}${(value / 1e9).toFixed(2)}B`;
-                                    if (Math.abs(value) >= 1e6) return `${label}${(value / 1e6).toFixed(2)}M`;
-                                    return `${label}${value.toLocaleString()}`;
+                                    if (Math.abs(value) >= 1e9) return `${displayLabel}: ${(value / 1e9).toFixed(2)}B`;
+                                    if (Math.abs(value) >= 1e6) return `${displayLabel}: ${(value / 1e6).toFixed(2)}M`;
+                                    return `${displayLabel}: ${value.toLocaleString()}`;
                                 case 'TTM Dividends':
-                                    return `${label}$${value.toFixed(4)}`; // More precision for dividends in tooltip
+                                    return `${displayLabel}: $${value.toFixed(4)}`; // More precision for dividends in tooltip
                                 case 'PE Ratio':
                                 case 'PS Ratio':
-                                    return `${label}${value.toFixed(2)}`;
+                                    return `${displayLabel}: ${value.toFixed(2)}`;
+                                case 'P/FCF Ratio':
+                                    return `${displayLabel}: ${value.toFixed(2)}`;
+                                case 'Dividend Yield (TTM)':
+                                    return `${displayLabel}: ${(value * 100).toFixed(2)}%`;
                                 case 'Adjusted Close Price':
-                                    return `${label}$${value.toFixed(2)}`;
+                                    return `${displayLabel}: $${value.toFixed(2)}`;
                                 case 'EPS (Annual)':
-                                    return `${label}${value.toFixed(2)}`;
+                                    return `${displayLabel}: ${value.toFixed(2)}`;
                                 case 'Revenues':
                                 case 'Net Income':
                                 case 'Capital Expenditures':
                                 case 'Free Cash Flow':
-                                    if (Math.abs(value) >= 1e9) return `${label}${(value / 1e9).toFixed(2)}B`;
-                                    if (Math.abs(value) >= 1e6) return `${label}${(value / 1e6).toFixed(2)}M`;
-                                    return `${label}${value.toLocaleString()}`;
+                                    if (Math.abs(value) >= 1e9) return `${displayLabel}: ${(value / 1e9).toFixed(2)}B`;
+                                    if (Math.abs(value) >= 1e6) return `${displayLabel}: ${(value / 1e6).toFixed(2)}M`;
+                                    return `${displayLabel}: ${value.toLocaleString()}`;
                                 default:
-                                    return `${label}${value.toLocaleString()}`;
+                                    return `${displayLabel}: ${value.toLocaleString()}`;
                             }
                         }
                     }

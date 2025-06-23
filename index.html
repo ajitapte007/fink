@@ -266,56 +266,66 @@
            </div>
 
             <!-- Vertically aligned and left-aligned metrics -->
-            <div class="metric-group">
-                <h3 class="text-md font-semibold text-gray-700 mb-2">Business</h3>
-                <div class="flex flex-col items-start gap-2">
-                    <div class="radio-item">
-                        <input type="radio" id="selectRevenues" name="ratioSelect" value="REVENUES">
-                        <label for="selectRevenues">Revenues</label>
-                    </div>
-                    <div class="radio-item">
-                        <input type="radio" id="selectNetIncome" name="ratioSelect" value="NET_INCOME">
-                        <label for="selectNetIncome">Net Income</label>
-                    </div>
-                    <div class="radio-item">
-                        <input type="radio" id="selectEPS" name="ratioSelect" value="EPS">
-                        <label for="selectEPS">EPS (Annual)</label>
-                    </div>
-                    <div class="radio-item">
-                        <input type="radio" id="selectCapex" name="ratioSelect" value="CAPEX">
-                        <label for="selectCapex">Capital Expenditures</label>
-                    </div>
-                    <div class="radio-item">
-                        <input type="radio" id="selectFCF" name="ratioSelect" value="FCF">
-                        <label for="selectFCF">Free Cash Flow</label>
-                    </div>
-                </div>
-            </div>
-
-            <div class="metric-group">
-                <h3 class="text-md font-semibold text-gray-700 mb-2">Ratios</h3>
-                <div class="flex flex-col items-start gap-2">
-                    <div class="radio-item">
-                        <input type="radio" id="selectPERatio" name="ratioSelect" value="PE" checked>
-                        <label for="selectPERatio">P/E</label>
-                    </div>
-                    <div class="radio-item">
-                        <input type="radio" id="selectPSRatio" name="ratioSelect" value="PS">
-                        <label for="selectPSRatio">P/S</label>
+            <div class="metric-group-scrollable p-4 border rounded-lg">
+                <div class="metric-group mb-4">
+                    <h3 class="text-md font-semibold text-gray-700 mb-2">Business</h3>
+                    <div class="flex flex-col items-start gap-2">
+                        <div class="radio-item">
+                            <input type="radio" id="selectRevenues" name="ratioSelect" value="REVENUES">
+                            <label for="selectRevenues">Revenues</label>
+                        </div>
+                        <div class="radio-item">
+                            <input type="radio" id="selectNetIncome" name="ratioSelect" value="NET_INCOME">
+                            <label for="selectNetIncome">Net Income</label>
+                        </div>
+                        <div class="radio-item">
+                            <input type="radio" id="selectEPS" name="ratioSelect" value="EPS">
+                            <label for="selectEPS">EPS (Annual)</label>
+                        </div>
+                        <div class="radio-item">
+                            <input type="radio" id="selectCapex" name="ratioSelect" value="CAPEX">
+                            <label for="selectCapex">Capital Expenditures</label>
+                        </div>
+                        <div class="radio-item">
+                            <input type="radio" id="selectFCF" name="ratioSelect" value="FCF">
+                            <label for="selectFCF">Free Cash Flow</label>
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            <div class="metric-group">
-                <h3 class="text-md font-semibold text-gray-700 mb-2">Shareholder</h3>
-                <div class="flex flex-col items-start gap-2">
-                    <div class="radio-item">
-                        <input type="radio" id="selectSharesOutstanding" name="ratioSelect" value="SO">
-                        <label for="selectSharesOutstanding">Shares outstanding</label>
+                <div class="metric-group mb-4">
+                    <h3 class="text-md font-semibold text-gray-700 mb-2">Valuation Ratios</h3>
+                    <div class="flex flex-col items-start gap-2">
+                        <div class="flex items-center">
+                            <input type="radio" id="selectPERatio" name="ratioSelect" class="h-4 w-4 text-blue-600 border-gray-300" value="PE">
+                            <label for="selectPERatio" class="ml-2 block text-sm text-gray-900">P/E</label>
+                        </div>
+                        <div class="flex items-center">
+                            <input type="radio" id="selectPSRatio" name="ratioSelect" class="h-4 w-4 text-blue-600 border-gray-300" value="PS">
+                            <label for="selectPSRatio" class="ml-2 block text-sm text-gray-900">P/S</label>
+                        </div>
+                        <div class="flex items-center">
+                            <input type="radio" id="selectPFCFRatio" name="ratioSelect" class="h-4 w-4 text-blue-600 border-gray-300" value="PFCF">
+                            <label for="selectPFCFRatio" class="ml-2 block text-sm text-gray-900">P/FCF</label>
+                        </div>
                     </div>
-                    <div class="radio-item">
-                        <input type="radio" id="selectDividends" name="ratioSelect" value="DIVIDENDS">
-                        <label for="selectDividends">Dividends (TTM)</label>
+                </div>
+
+                <div class="metric-group">
+                    <h3 class="text-md font-semibold text-gray-700 mb-2">Shareholder Returns</h3>
+                    <div class="flex flex-col items-start gap-2">
+                        <div class="flex items-center">
+                            <input type="radio" id="selectSharesOutstanding" name="ratioSelect" class="h-4 w-4 text-blue-600 border-gray-300" value="SO">
+                            <label for="selectSharesOutstanding" class="ml-2 block text-sm text-gray-900">Shares Outstanding</label>
+                        </div>
+                        <div class="flex items-center">
+                            <input type="radio" id="selectDividends" name="ratioSelect" class="h-4 w-4 text-blue-600 border-gray-300" value="DIVIDENDS">
+                            <label for="selectDividends" class="ml-2 block text-sm text-gray-900">Dividends (TTM)</label>
+                        </div>
+                        <div class="flex items-center">
+                            <input type="radio" id="selectDividendYield" name="ratioSelect" class="h-4 w-4 text-blue-600 border-gray-300" value="DIVYIELD">
+                            <label for="selectDividendYield" class="ml-2 block text-sm text-gray-900">Dividend Yield (TTM)</label>
+                        </div>
                     </div>
                 </div>
             </div>
