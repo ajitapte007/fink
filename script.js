@@ -108,20 +108,20 @@ export const metricsConfig = [
         isTimeSeries: false // Explicitly set to false
     },
     {
-        id: 'dividends',
-        label: 'Dividend Amount (Raw)',
-        type: 'raw_time_series', // Or raw_event_series
-        source_function: 'DIVIDENDS',
-        source_path: ['data', 'amount'],
-        date_keys: 'ex_dividend_date',
-        is_plottable: false, // Not plotted directly, used for TTM Dividends
-        isTimeSeries: false // FIX: Dividend data is an array of objects, not a time series object
+        id: 'dividendPayout',
+        label: 'Dividend Payout',
+        type: 'raw_fundamental',
+        source_function: 'CASH_FLOW',
+        source_path: ['annualReports', 'dividendPayout'],
+        date_keys: 'fiscalDateEnding',
+        is_plottable: false,
+        isTimeSeries: false
     },
     {
         id: 'ttmDividends',
         label: 'TTM Dividends',
-        type: 'derived_ttm',
-        calculation_basis: 'dividends', // Based on raw dividends
+        type: 'derived_custom',
+        calculation_formula: 'dividendPayout / commonSharesOutstanding',
         color: 'rgb(255, 159, 64)',
         axis: 'y-ratio',
         ui_radio_id: 'selectDividends',
@@ -592,7 +592,7 @@ async function fetchAndProcessFinancialData(ticker, alphaVantageApiKey, startYea
         processedMetrics[mc.id] = calculateTTM(processedMetrics[mc.calculation_basis]);
     });
 
-    // Custom Derived Metrics (RPS, FCF)
+    // Custom Derived Metrics (RPS, FCF, TTM Dividends per share)
     const calculateCustomMetric = (metricId, formula, operation) => {
         const metricConf = metricsConfig.find(m => m.id === metricId);
         if (!metricConf) return;
@@ -603,7 +603,6 @@ async function fetchAndProcessFinancialData(ticker, alphaVantageApiKey, startYea
         
         if (data1 && data2) {
             const result = {};
-            
             const toMap = (data) => new Map(
                 Array.isArray(data) 
                     ? data.map(item => [new Date(item.date).getFullYear(), item.value]) 
@@ -616,13 +615,11 @@ async function fetchAndProcessFinancialData(ticker, alphaVantageApiKey, startYea
             for (const [year, val1] of map1.entries()) {
                 const val2 = map2.get(year);
                 if (typeof val2 !== 'undefined') {
-                    // Find original date from whichever data source is an array, or fall back
                     const originalDateSource = Array.isArray(data1) ? data1 : (Array.isArray(data2) ? data2 : null);
                     let originalDate;
                     if (originalDateSource) {
                        originalDate = originalDateSource.find(item => new Date(item.date).getFullYear() === year).date;
                     } else {
-                        // If both are objects, we have to find the date by key (less reliable)
                         originalDate = Object.keys(data1).find(date => new Date(date).getFullYear() === year);
                     }
 
@@ -642,6 +639,7 @@ async function fetchAndProcessFinancialData(ticker, alphaVantageApiKey, startYea
     calculateCustomMetric('rps', 'annualRevenue / commonSharesOutstanding', 'divide');
     calculateCustomMetric('fcf', 'operatingCashflow - capitalExpenditures', 'subtract');
     calculateCustomMetric('fcfPerShare', 'fcf / commonSharesOutstanding', 'divide');
+    calculateCustomMetric('ttmDividends', 'dividendPayout / commonSharesOutstanding', 'divide');
 
     // Interpolation
     const priceDates = Object.keys(processedMetrics['price'] || {}).sort();
