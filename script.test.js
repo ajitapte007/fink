@@ -1,4 +1,4 @@
-import { roundDateToEndOfMonth, getNestedValue, calculateTTM, interpolateData } from './script.js';
+import { roundDateToEndOfMonth, getNestedValue, calculateTTM, interpolateData, processFinancialData, prepareChartData } from './script.js';
 
 describe('roundDateToEndOfMonth', () => {
     test('should round a mid-month date to the end of that month', () => {
@@ -139,5 +139,103 @@ describe('interpolateData', () => {
         const earlyTargetDates = ['2021-01-31', '2021-02-28'];
         const interpolated = interpolateData(annualData, earlyTargetDates);
         expect(interpolated).toEqual(earlyTargetDates.map(date => ({ date, value: null })));
+    });
+});
+
+describe('processFinancialData', () => {
+    const metricsConfig = [
+        {
+            id: 'price',
+            label: 'Adjusted Close Price',
+            type: 'raw_time_series',
+            source_function: 'TIME_SERIES_MONTHLY_ADJUSTED',
+            source_path: ['Monthly Adjusted Time Series', '5. adjusted close'],
+            isTimeSeries: true,
+            is_plottable: true,
+            fx_adjust: false
+        },
+        {
+            id: 'annualRevenue',
+            label: 'Total Revenue (Annual)',
+            type: 'raw_fundamental',
+            source_function: 'INCOME_STATEMENT',
+            source_path: ['annualReports', 'totalRevenue'],
+            date_keys: 'fiscalDateEnding',
+            isTimeSeries: false,
+            is_plottable: true,
+            fx_adjust: true
+        },
+        {
+            id: 'commonSharesOutstanding',
+            label: 'Shares Outstanding',
+            type: 'raw_fundamental',
+            source_function: 'BALANCE_SHEET',
+            source_path: ['annualReports', 'commonStockSharesOutstanding'],
+            date_keys: 'fiscalDateEnding',
+            isTimeSeries: false,
+            is_plottable: false,
+            fx_adjust: false
+        }
+    ];
+
+    it('should apply FX rates to non-price metrics and not to price', () => {
+        const rawData = {
+            'TIME_SERIES_MONTHLY_ADJUSTED': {
+                'Monthly Adjusted Time Series': {
+                    '2023-01-31': { '5. adjusted close': '100' },
+                    '2023-02-28': { '5. adjusted close': '110' },
+                    '2023-03-31': { '5. adjusted close': '120' }
+                }
+            },
+            'INCOME_STATEMENT': {
+                annualReports: [
+                    { fiscalDateEnding: '2023-01-31', totalRevenue: '200', reportedCurrency: 'EUR' },
+                    { fiscalDateEnding: '2023-02-28', totalRevenue: '220', reportedCurrency: 'EUR' },
+                    { fiscalDateEnding: '2023-03-31', totalRevenue: '240', reportedCurrency: 'EUR' }
+                ]
+            }
+        };
+        const fxRateUsed = 1.2;
+        const startDate = new Date('2023-01-31');
+        const endDate = new Date('2023-03-31');
+        const processedMetrics = processFinancialData(rawData, fxRateUsed, startDate, endDate, metricsConfig);
+        const chartData = prepareChartData(processedMetrics, ['price', 'annualRevenue'], metricsConfig);
+        // Find the dataset for annualRevenue
+        const annualRevenueDs = chartData.datasets.find(d => d.label === 'Total Revenue (Annual)');
+        expect(annualRevenueDs).toBeDefined();
+        // Check all values
+        expect(annualRevenueDs.data[0]).toBeCloseTo(200 * 1.2);
+        expect(annualRevenueDs.data[1]).toBeCloseTo(220 * 1.2);
+        expect(annualRevenueDs.data[2]).toBeCloseTo(240 * 1.2);
+    });
+
+    it('should not apply FX if fxRates is empty (USD passthrough)', () => {
+        const rawData = {
+            'TIME_SERIES_MONTHLY_ADJUSTED': {
+                'Monthly Adjusted Time Series': {
+                    '2023-01-31': { '5. adjusted close': '100' },
+                    '2023-02-28': { '5. adjusted close': '110' },
+                    '2023-03-31': { '5. adjusted close': '120' }
+                }
+            },
+            'INCOME_STATEMENT': {
+                annualReports: [
+                    { fiscalDateEnding: '2023-01-31', totalRevenue: '200', reportedCurrency: 'USD' },
+                    { fiscalDateEnding: '2023-02-28', totalRevenue: '220', reportedCurrency: 'USD' },
+                    { fiscalDateEnding: '2023-03-31', totalRevenue: '240', reportedCurrency: 'USD' }
+                ]
+            }
+        };
+        const fxRateUsed = 1.0; // USD passthrough
+        const startDate = new Date('2023-01-31');
+        const endDate = new Date('2023-03-31');
+        const processedMetrics = processFinancialData(rawData, fxRateUsed, startDate, endDate, metricsConfig);
+        const chartData = prepareChartData(processedMetrics, ['price', 'annualRevenue'], metricsConfig);
+        // Find the dataset for annualRevenue
+        const annualRevenueDs = chartData.datasets.find(d => d.label === 'Total Revenue (Annual)');
+        expect(annualRevenueDs).toBeDefined();
+        expect(annualRevenueDs.data[0]).toBeCloseTo(200);
+        expect(annualRevenueDs.data[1]).toBeCloseTo(220);
+        expect(annualRevenueDs.data[2]).toBeCloseTo(240);
     });
 }); 

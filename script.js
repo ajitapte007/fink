@@ -51,6 +51,7 @@ let alphaVantageAPIKnowledgeBase = {};
  * @property {string} [ui_radio_id] - HTML ID of the radio button for this metric (if part of a group).
  * @property {boolean} is_plottable - Whether this metric should be plotted on the chart.
  * @property {boolean} [isTimeSeries] - Indicates if the source data is a time series (dates as keys).
+ * @property {boolean} fx_adjust - Whether this metric should be FX adjusted.
  */
 export const metricsConfig = [
     {
@@ -63,7 +64,8 @@ export const metricsConfig = [
         color: 'rgb(75, 192, 192)',
         axis: 'y-price',
         is_plottable: true,
-        isTimeSeries: true // Explicitly set to true
+        isTimeSeries: true, // Explicitly set to true
+        fx_adjust: false // Price is always in USD
     },
     {
         id: 'quarterlyEPS',
@@ -97,15 +99,16 @@ export const metricsConfig = [
     {
         id: 'commonSharesOutstanding',
         label: 'Shares Outstanding',
-        type: 'raw_fundamental', // This is raw data, not derived
+        type: 'raw_fundamental',
         source_function: 'BALANCE_SHEET',
         source_path: ['annualReports', 'commonStockSharesOutstanding'],
         date_keys: 'fiscalDateEnding',
         color: 'rgb(0, 123, 255)',
         axis: 'y-ratio',
         ui_radio_id: 'selectSharesOutstanding',
-        is_plottable: true, // Directly plottable
-        isTimeSeries: false // Explicitly set to false
+        is_plottable: true,
+        isTimeSeries: false,
+        fx_adjust: false // Shares should not be FX adjusted
     },
     {
         id: 'dividendPayout',
@@ -306,6 +309,10 @@ function displayMessage(msg, type) {
  * @param {string} msg The message to log.
  */
 function appendToPapertrail(msg) {
+    if (typeof papertrailLog === 'undefined' || !papertrailLog || typeof document === 'undefined') {
+        // In test or non-browser environment, do nothing (or optionally: console.log(msg));
+        return;
+    }
     papertrailLog.classList.remove('hidden');
     const p = document.createElement('p');
     p.textContent = `• ${msg}`;
@@ -502,19 +509,17 @@ function escapeRegExp(string) {
 }
 
 /**
- * Fetches and processes financial data based on metricsConfig.
- * @param {string} ticker The stock ticker symbol.
- * @param {string} alphaVantageApiKey Your Alpha Vantage API key.
- * @param {number} startYearAgo - How many years ago the data should start.
- * @param {number} endYearAgo - How many years ago the data should end.
- * @returns {Promise<object>}
+ * Fetches all required raw data and FX rates for a ticker (with cache logic).
+ * @param {string} ticker
+ * @param {string} alphaVantageApiKey
+ * @param {number} startYearAgo
+ * @param {number} endYearAgo
+ * @param {Array} metricsConfig
+ * @returns {Promise<{rawData: object, fxRateUsed: number}>}
  */
-async function fetchAndProcessFinancialData(ticker, alphaVantageApiKey, startYearAgo, endYearAgo) {
-    globalProcessedMetrics = {}; // Reset on each run
-    appendToPapertrail('Step 1: Fetching all required Alpha Vantage data...');
+export async function fetchFinancialData(ticker, alphaVantageApiKey, startYearAgo, endYearAgo, metricsConfig) {
     const fetchedRawData = {};
     const alphaVantageCalls = [];
-
     const functionsToFetch = new Set(metricsConfig.map(m => m.source_function).filter(Boolean));
 
     for (const func of Array.from(functionsToFetch)) {
@@ -522,7 +527,6 @@ async function fetchAndProcessFinancialData(ticker, alphaVantageApiKey, startYea
         if (func === 'TIME_SERIES_MONTHLY_ADJUSTED') {
             url += `&outputsize=full`;
         }
-
         const cachedData = getFromCache(url);
         if (cachedData) {
             fetchedRawData[func] = cachedData;
@@ -545,149 +549,51 @@ async function fetchAndProcessFinancialData(ticker, alphaVantageApiKey, startYea
     }
     await Promise.all(alphaVantageCalls);
 
-    appendToPapertrail('Step 2: Extracting and filtering raw metrics...');
-    const extractedRawMetrics = {};
-    const now = new Date();
-    const startDate = new Date(new Date().setFullYear(now.getFullYear() - startYearAgo));
-    const endDate = new Date(new Date().setFullYear(now.getFullYear() - endYearAgo));
-
-    for (const metricConfig of metricsConfig.filter(m => m.type.startsWith('raw_'))) {
-        const rawData = fetchedRawData[metricConfig.source_function];
-        if (!rawData || rawData.error) continue;
-
-        let dataContainer = getNestedValue(rawData, [metricConfig.source_path[0]]);
-        if (!dataContainer) continue;
-
-        const tempExtracted = {};
-        if (metricConfig.isTimeSeries) {
-            Object.keys(dataContainer).forEach(dateStr => {
-                const itemDate = new Date(dateStr);
-                if (itemDate >= startDate && itemDate <= endDate) {
-                    const value = parseFloat(getNestedValue(dataContainer[dateStr], metricConfig.source_path.slice(1)));
-                    if (!isNaN(value)) tempExtracted[dateStr] = value;
-                }
-            });
-            extractedRawMetrics[metricConfig.id] = tempExtracted;
+    // Only consider these endpoints for currency detection
+    const currencyEndpoints = ['CASH_FLOW', 'INCOME_STATEMENT', 'BALANCE_SHEET'];
+    let localCurrency = 'USD';
+    for (const func of currencyEndpoints) {
+        const raw = fetchedRawData[func];
+        if (!raw) continue;
+        let detected = 'USD';
+        if (raw && Array.isArray(raw["annualReports"]) && raw["annualReports"][0] && raw["annualReports"][0]["reportedCurrency"]) {
+            detected = raw["annualReports"][0]["reportedCurrency"];
+        } else if (raw && raw["reportedCurrency"]) {
+            detected = raw["reportedCurrency"];
+        }
+        if (detected && detected !== 'USD') {
+            localCurrency = detected;
+            break;
+        }
+    }
+    // Fetch FX rate series if needed
+    let fxRateUsed = 1.0;
+    if (localCurrency !== 'USD') {
+        const fxUrl = `https://www.alphavantage.co/query?function=FX_MONTHLY&from_symbol=${localCurrency}&to_symbol=USD&apikey=${alphaVantageApiKey}`;
+        let fxData;
+        const cachedFX = getFromCache(fxUrl);
+        if (cachedFX) {
+            fxData = cachedFX;
         } else {
-            const processedEntries = [];
-            (Array.isArray(dataContainer) ? dataContainer : []).forEach(item => {
-                const dateStr = findValidDate(item, metricConfig.date_keys);
-                if (dateStr) {
-                    const itemDate = new Date(dateStr);
-                    if (itemDate >= startDate && itemDate <= endDate) {
-                        const value = parseFloat(getNestedValue(item, metricConfig.source_path.slice(1)));
-                        if (!isNaN(value)) processedEntries.push({ date: dateStr, value });
-                    }
-                }
-            });
-            extractedRawMetrics[metricConfig.id] = processedEntries;
+            fxData = await fetch(fxUrl).then(r => r.json());
+            addToCache(fxUrl, fxData);
         }
-    }
-
-    appendToPapertrail('Step 3: Processing derived metrics...');
-    const processedMetrics = { ...extractedRawMetrics };
-
-    // TTM Metrics
-    metricsConfig.filter(m => m.type === 'derived_ttm').forEach(mc => {
-        processedMetrics[mc.id] = calculateTTM(processedMetrics[mc.calculation_basis]);
-    });
-
-    // Custom Derived Metrics (RPS, FCF, TTM Dividends per share)
-    const calculateCustomMetric = (metricId, formula, operation) => {
-        const metricConf = metricsConfig.find(m => m.id === metricId);
-        if (!metricConf) return;
-        
-        const [id1, id2] = formula.split(operation === 'subtract' ? ' - ' : ' / ');
-        const data1 = processedMetrics[id1.trim()];
-        const data2 = processedMetrics[id2.trim()];
-        
-        if (data1 && data2) {
-            const result = {};
-            const toMap = (data) => new Map(
-                Array.isArray(data) 
-                    ? data.map(item => [new Date(item.date).getFullYear(), item.value]) 
-                    : Object.entries(data).map(([date, value]) => [new Date(date).getFullYear(), value])
-            );
-
-            const map1 = toMap(data1);
-            const map2 = toMap(data2);
-
-            for (const [year, val1] of map1.entries()) {
-                const val2 = map2.get(year);
-                if (typeof val2 !== 'undefined') {
-                    const originalDateSource = Array.isArray(data1) ? data1 : (Array.isArray(data2) ? data2 : null);
-                    let originalDate;
-                    if (originalDateSource) {
-                       originalDate = originalDateSource.find(item => new Date(item.date).getFullYear() === year).date;
-                    } else {
-                        originalDate = Object.keys(data1).find(date => new Date(date).getFullYear() === year);
-                    }
-
-                    if (originalDate) {
-                        if (operation === 'subtract') {
-                            result[originalDate] = val1 - val2;
-                        } else if (val2 !== 0) {
-                            result[originalDate] = val1 / val2;
-                        }
-                    }
-                }
+        let mostRecentFX = 1.0;
+        if (fxData && fxData["Time Series FX (Monthly)"]) {
+            const entries = Object.entries(fxData["Time Series FX (Monthly)"]);
+            if (entries.length > 0) {
+                // Pick the most recent (first) FX rate
+                mostRecentFX = parseFloat(entries[0][1]["4. close"]);
             }
-            processedMetrics[metricId] = result;
         }
-    };
-
-    calculateCustomMetric('rps', 'annualRevenue / commonSharesOutstanding', 'divide');
-    calculateCustomMetric('fcf', 'operatingCashflow - capitalExpenditures', 'subtract');
-    calculateCustomMetric('fcfPerShare', 'fcf / commonSharesOutstanding', 'divide');
-    calculateCustomMetric('ttmDividends', 'dividendPayout / commonSharesOutstanding', 'divide');
-
-    // Interpolation
-    const priceDates = Object.keys(processedMetrics['price'] || {}).sort();
-    if (priceDates.length === 0) throw new Error('No price data available for timeframe.');
-
-    const interpolatedMetrics = {};
-    const metricsToInterpolate = new Set(metricsConfig.filter(m => m.is_plottable || ['ttmEps', 'rps', 'fcf', 'fcfPerShare'].includes(m.id)).map(m => m.id));
-    
-    for (const metricId in processedMetrics) {
-        if (!metricsToInterpolate.has(metricId) || metricId === 'price') {
-            interpolatedMetrics[metricId] = processedMetrics[metricId];
-            continue;
-        }
-        const dataAsArray = Array.isArray(processedMetrics[metricId]) ? processedMetrics[metricId] : Object.entries(processedMetrics[metricId]).map(([date, value]) => ({ date, value }));
-        interpolatedMetrics[metricId] = interpolateData(dataAsArray, priceDates);
+        // Use this single FX rate for all conversions
+        fxRateUsed = mostRecentFX;
+    } else {
+        appendToPapertrail(`[FX DEBUG] No FX fetch needed, localCurrency is USD.`);
     }
-    
-    // Ratios
-    metricsConfig.filter(m => m.type === 'derived_ratio').forEach(mc => {
-        const [numId, denId] = mc.calculation_formula.split(' / ').map(s => s.trim());
-        const numData = interpolatedMetrics[numId];
-        const denData = interpolatedMetrics[denId];
-        if (!numData || !denData) return;
-        
-        const numMap = new Map(Array.isArray(numData) ? numData.map(i => [i.date, i.value]) : Object.entries(numData));
-        const denMap = new Map(Array.isArray(denData) ? denData.map(i => [i.date, i.value]) : Object.entries(denData));
-        
-        const ratioResult = priceDates.map(date => {
-            const num = numMap.get(date);
-            const den = denMap.get(date);
-            return (num != null && den != null && den !== 0) ? { date, value: num / den } : { date, value: null };
-        });
-        interpolatedMetrics[mc.id] = ratioResult;
-    });
 
-    appendToPapertrail('Step 4: Preparing final data for charting...');
-    globalProcessedMetrics = interpolatedMetrics;
-    const { datasets, commonLabels } = prepareChartData(getSelectedMetricsForPlotting());
-
-    return {
-        datasets,
-        commonLabels,
-        chartTitle: `${ticker.toUpperCase()} Financial Analysis`,
-        xAxisLabel: 'Date',
-        yAxisLabels: { 'y-price': 'Price (USD)', 'y-ratio': 'Ratio / Value' }
-    };
+    return { rawData: fetchedRawData, fxRateUsed };
 }
-
 
 /**
  * Calculates Trailing Twelve Months (TTM) for a given quarterly or event-based dataset.
@@ -786,21 +692,23 @@ function getSelectedMetricsForPlotting() {
 }
 
 /**
- * Prepares chart datasets from the global processed data based on UI selections.
+ * Prepares chart datasets from processed metrics based on explicit metric IDs.
+ * @param {object} processedMetrics - Object of processed/interpolated metrics keyed by metric ID.
  * @param {string[]} selectedMetrics - Array of metric IDs to plot.
+ * @param {Array} metricsConfig - The metrics configuration array.
  * @returns {{datasets: object[], commonLabels: string[]}>}
  */
-function prepareChartData(selectedMetrics) {
-    if (!globalProcessedMetrics) return { datasets: [], commonLabels: [] };
-
+export function prepareChartData(processedMetrics, selectedMetrics, metricsConfig) {
+    if (!processedMetrics) return { datasets: [], commonLabels: [] };
+    selectedMetrics = selectedMetrics || [];
     appendToPapertrail(`Preparing chart for: ${selectedMetrics.join(', ')}`);
     const datasetsForChart = [];
     // Price is still an object, so this is our source of truth for labels
-    const commonLabels = Object.keys(globalProcessedMetrics['price'] || {}).sort();
+    const commonLabels = Object.keys(processedMetrics['price'] || {}).sort();
 
     for (const metricId of selectedMetrics) {
         const metricConfig = metricsConfig.find(m => m.id === metricId);
-        const data = globalProcessedMetrics[metricId];
+        const data = processedMetrics[metricId];
         if (!metricConfig || !data) {
             appendToPapertrail(`Warning: No data for ${metricId}. Skipping.`);
             continue;
@@ -835,7 +743,14 @@ function prepareChartData(selectedMetrics) {
  * @param {object} chartData - Data from fetchAndProcessFinancialData or prepareChartData.
  */
 function createOrUpdateChart(chartData) {
-    const { datasets, commonLabels, chartTitle, xAxisLabel, yAxisLabels } = chartData;
+    // Provide defaults for chartData fields if missing
+    const {
+        datasets = [],
+        commonLabels = [],
+        chartTitle = 'Financial Analysis',
+        xAxisLabel = 'Date',
+        yAxisLabels = { 'y-price': 'Price (USD)', 'y-ratio': 'Ratio / Value' }
+    } = chartData || {};
     if (myChart) myChart.destroy();
 
     const yAxes = {};
@@ -1001,10 +916,15 @@ async function plotData() {
     }
 
     try {
-        const chartData = await fetchAndProcessFinancialData(ticker, alphaVantageApiKey, startYearAgo, endYearAgo);
+        const now = new Date();
+        const startDate = new Date(new Date().setFullYear(now.getFullYear() - startYearAgo));
+        const endDate = new Date(new Date().setFullYear(now.getFullYear() - endYearAgo));
+        const { rawData, fxRateUsed } = await fetchFinancialData(ticker, alphaVantageApiKey, startDate, endDate, metricsConfig);
+        const processedMetrics = processFinancialData(rawData, fxRateUsed, startDate, endDate, metricsConfig);
+        const chartData = prepareChartData(processedMetrics, getSelectedMetricsForPlotting(), metricsConfig);
         if (chartData) {
             createOrUpdateChart(chartData);
-            lastFetchedChartData = chartData; // Cache the successful chart data
+            lastFetchedChartData = { ...chartData, processedMetrics }; // Cache both chart data and processed metrics
             displayMessage('Chart updated successfully.', 'success');
         }
     } catch (error) {
@@ -1019,7 +939,10 @@ async function plotData() {
 // Function to replot based on UI changes without re-fetching
 function replotFromCache() {
     if (lastFetchedChartData) {
-        const { datasets, commonLabels } = prepareChartData(getSelectedMetricsForPlotting());
+        // Use cached processedMetrics if available, otherwise fallback to empty object
+        const processedMetrics = lastFetchedChartData.processedMetrics || {};
+        const selectedMetrics = getSelectedMetricsForPlotting() || [];
+        const { datasets, commonLabels } = prepareChartData(processedMetrics, selectedMetrics, metricsConfig);
         createOrUpdateChart({ ...lastFetchedChartData, datasets, commonLabels });
         appendToPapertrail('Re-plotted metrics from cached data.');
     }
@@ -1073,4 +996,153 @@ if (typeof window !== 'undefined') {
         // Initial call to set slider appearance
         document.addEventListener('DOMContentLoaded', updateSliderAppearance);
     });
+}
+
+/**
+ * Processes raw data into USD-normalized, chart-ready metrics.
+ * @param {object} rawData - Map of endpoint/function name to raw API response.
+ * @param {number} fxRateUsed - Single FX rate used for all conversions.
+ * @param {Date} startDate - Start date (inclusive) for filtering data.
+ * @param {Date} endDate - End date (inclusive) for filtering data.
+ * @param {Array} metricsConfig
+ * @returns {object} Processed metrics and chart data.
+ */
+export function processFinancialData(rawData, fxRateUsed, startDate, endDate, metricsConfig) {
+    appendToPapertrail('Step 1: Applying FX rates if needed...');
+    // 1. Extract and convert raw metrics
+    appendToPapertrail('Step 2: Extracting and converting raw metrics...');
+    const extractedRawMetrics = {};
+
+    for (const metricConfig of metricsConfig.filter(m => m.type.startsWith('raw_'))) {
+        const endpoint = metricConfig.source_function;
+        const isPrice = endpoint === 'TIME_SERIES_MONTHLY_ADJUSTED';
+        const fxToUse = (metricConfig.fx_adjust === false) ? 1.0 : (isPrice ? 1.0 : fxRateUsed);
+        const raw = rawData[endpoint];
+        if (!raw || raw.error) continue;
+
+        let dataContainer = getNestedValue(raw, [metricConfig.source_path[0]]);
+        if (!dataContainer) continue;
+
+        const tempExtracted = {};
+        if (metricConfig.isTimeSeries) {
+            Object.keys(dataContainer).forEach(dateStr => {
+                const itemDate = new Date(dateStr);
+                if (itemDate >= startDate && itemDate <= endDate) {
+                    const value = parseFloat(getNestedValue(dataContainer[dateStr], metricConfig.source_path.slice(1)));
+                    if (!isNaN(value)) tempExtracted[dateStr] = value;
+                }
+            });
+            extractedRawMetrics[metricConfig.id] = tempExtracted;
+        } else {
+            const processedEntries = [];
+            (Array.isArray(dataContainer) ? dataContainer : []).forEach(item => {
+                const dateStr = findValidDate(item, metricConfig.date_keys);
+                if (dateStr) {
+                    const itemDate = new Date(dateStr);
+                    if (itemDate >= startDate && itemDate <= endDate) {
+                        const value = parseFloat(getNestedValue(item, metricConfig.source_path.slice(1)));
+                        if (!isNaN(value)) {
+                            const converted = value * fxToUse;
+                            processedEntries.push({ date: dateStr, value: converted });
+                        }
+                    }
+                }
+            });
+            extractedRawMetrics[metricConfig.id] = processedEntries;
+        }
+    }
+
+    appendToPapertrail('Step 3: Processing derived metrics...');
+    const processedMetrics = { ...extractedRawMetrics };
+
+    // TTM Metrics
+    metricsConfig.filter(m => m.type === 'derived_ttm').forEach(mc => {
+        processedMetrics[mc.id] = calculateTTM(processedMetrics[mc.calculation_basis]);
+    });
+
+    // Custom Derived Metrics (RPS, FCF, TTM Dividends per share)
+    const calculateCustomMetric = (metricId, formula, operation) => {
+        const metricConf = metricsConfig.find(m => m.id === metricId);
+        if (!metricConf) return;
+        
+        const [id1, id2] = formula.split(operation === 'subtract' ? ' - ' : ' / ');
+        const data1 = processedMetrics[id1.trim()];
+        const data2 = processedMetrics[id2.trim()];
+        
+        if (data1 && data2) {
+            const result = {};
+            const toMap = (data) => new Map(
+                Array.isArray(data) 
+                    ? data.map(item => [new Date(item.date).getFullYear(), item.value]) 
+                    : Object.entries(data).map(([date, value]) => [new Date(date).getFullYear(), value])
+            );
+
+            const map1 = toMap(data1);
+            const map2 = toMap(data2);
+
+            for (const [year, val1] of map1.entries()) {
+                const val2 = map2.get(year);
+                if (typeof val2 !== 'undefined') {
+                    const originalDateSource = Array.isArray(data1) ? data1 : (Array.isArray(data2) ? data2 : null);
+                    let originalDate;
+                    if (originalDateSource) {
+                       originalDate = originalDateSource.find(item => new Date(item.date).getFullYear() === year).date;
+                    } else {
+                        originalDate = Object.keys(data1).find(date => new Date(date).getFullYear() === year);
+                    }
+
+                    if (originalDate) {
+                        if (operation === 'subtract') {
+                            result[originalDate] = val1 - val2;
+                        } else if (val2 !== 0) {
+                            result[originalDate] = val1 / val2;
+                        }
+                    }
+                }
+            }
+            processedMetrics[metricId] = result;
+        }
+    };
+
+    calculateCustomMetric('rps', 'annualRevenue / commonSharesOutstanding', 'divide');
+    calculateCustomMetric('fcf', 'operatingCashflow - capitalExpenditures', 'subtract');
+    calculateCustomMetric('fcfPerShare', 'fcf / commonSharesOutstanding', 'divide');
+    calculateCustomMetric('ttmDividends', 'dividendPayout / commonSharesOutstanding', 'divide');
+
+    // Interpolation
+    const priceDates = Object.keys(processedMetrics['price'] || {}).sort();
+    if (priceDates.length === 0) throw new Error('No price data available for timeframe.');
+
+    const interpolatedMetrics = {};
+    const metricsToInterpolate = new Set(metricsConfig.filter(m => m.is_plottable || ['ttmEps', 'rps', 'fcf', 'fcfPerShare'].includes(m.id)).map(m => m.id));
+    
+    for (const metricId in processedMetrics) {
+        if (!metricsToInterpolate.has(metricId) || metricId === 'price') {
+            interpolatedMetrics[metricId] = processedMetrics[metricId];
+            continue;
+        }
+        const dataAsArray = Array.isArray(processedMetrics[metricId]) ? processedMetrics[metricId] : Object.entries(processedMetrics[metricId]).map(([date, value]) => ({ date, value }));
+        interpolatedMetrics[metricId] = interpolateData(dataAsArray, priceDates);
+    }
+    
+    // Ratios
+    metricsConfig.filter(m => m.type === 'derived_ratio').forEach(mc => {
+        const [numId, denId] = mc.calculation_formula.split(' / ').map(s => s.trim());
+        const numData = interpolatedMetrics[numId];
+        const denData = interpolatedMetrics[denId];
+        if (!numData || !denData) return;
+        
+        const numMap = new Map(Array.isArray(numData) ? numData.map(i => [i.date, i.value]) : Object.entries(numData));
+        const denMap = new Map(Array.isArray(denData) ? denData.map(i => [i.date, i.value]) : Object.entries(denData));
+        
+        const ratioResult = priceDates.map(date => {
+            const num = numMap.get(date);
+            const den = denMap.get(date);
+            return (num != null && den != null && den !== 0) ? { date, value: num / den } : { date, value: null };
+        });
+        interpolatedMetrics[mc.id] = ratioResult;
+    });
+
+    appendToPapertrail('Step 4: Preparing final data for charting...');
+    return interpolatedMetrics;
 } 
