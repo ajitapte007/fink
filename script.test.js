@@ -1,4 +1,5 @@
-import { roundDateToEndOfMonth, getNestedValue, calculateTTM, interpolateData, processFinancialData, prepareChartData } from './script.js';
+import { roundDateToEndOfMonth, getNestedValue, calculateTTM, interpolateData, processFinancialData } from './processUtils.js';
+import { prepareChartData } from './chartUtils.js';
 
 describe('roundDateToEndOfMonth', () => {
     test('should round a mid-month date to the end of that month', () => {
