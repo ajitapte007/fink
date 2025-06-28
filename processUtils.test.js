@@ -1,5 +1,4 @@
 import { roundDateToEndOfMonth, getNestedValue, calculateTTM, interpolateData, processFinancialData } from './processUtils.js';
-import { prepareChartData } from './chartUtils.js';
 
 describe('roundDateToEndOfMonth', () => {
     test('should round a mid-month date to the end of that month', () => {
@@ -200,14 +199,10 @@ describe('processFinancialData', () => {
         const startDate = new Date('2023-01-31');
         const endDate = new Date('2023-03-31');
         const processedMetrics = processFinancialData(rawData, fxRateUsed, startDate, endDate, metricsConfig);
-        const chartData = prepareChartData(processedMetrics, ['price', 'annualRevenue'], metricsConfig);
-        // Find the dataset for annualRevenue
-        const annualRevenueDs = chartData.datasets.find(d => d.label === 'Total Revenue (Annual)');
-        expect(annualRevenueDs).toBeDefined();
-        // Check all values
-        expect(annualRevenueDs.data[0]).toBeCloseTo(200 * 1.2);
-        expect(annualRevenueDs.data[1]).toBeCloseTo(220 * 1.2);
-        expect(annualRevenueDs.data[2]).toBeCloseTo(240 * 1.2);
+        // Only test processFinancialData logic here
+        expect(processedMetrics.annualRevenue[0].value).toBeCloseTo(200 * 1.2);
+        expect(processedMetrics.annualRevenue[1].value).toBeCloseTo(220 * 1.2);
+        expect(processedMetrics.annualRevenue[2].value).toBeCloseTo(240 * 1.2);
     });
 
     it('should not apply FX if fxRates is empty (USD passthrough)', () => {
@@ -231,12 +226,8 @@ describe('processFinancialData', () => {
         const startDate = new Date('2023-01-31');
         const endDate = new Date('2023-03-31');
         const processedMetrics = processFinancialData(rawData, fxRateUsed, startDate, endDate, metricsConfig);
-        const chartData = prepareChartData(processedMetrics, ['price', 'annualRevenue'], metricsConfig);
-        // Find the dataset for annualRevenue
-        const annualRevenueDs = chartData.datasets.find(d => d.label === 'Total Revenue (Annual)');
-        expect(annualRevenueDs).toBeDefined();
-        expect(annualRevenueDs.data[0]).toBeCloseTo(200);
-        expect(annualRevenueDs.data[1]).toBeCloseTo(220);
-        expect(annualRevenueDs.data[2]).toBeCloseTo(240);
+        expect(processedMetrics.annualRevenue[0].value).toBeCloseTo(200);
+        expect(processedMetrics.annualRevenue[1].value).toBeCloseTo(220);
+        expect(processedMetrics.annualRevenue[2].value).toBeCloseTo(240);
     });
 }); 
