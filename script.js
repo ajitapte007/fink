@@ -18,6 +18,10 @@ const messageDisplay = document.getElementById('message');
 const togglePriceCheckbox = document.getElementById('togglePrice');
 const ratioSelectRadios = document.querySelectorAll('input[name="ratioSelect"]');
 const priceChartCanvas = document.getElementById('priceChart');
+// Recipes year slider elements
+const recipesYearSlider = document.getElementById('recipesYearSlider');
+const recipesYearLabel = document.getElementById('recipesYearLabel');
+const recipesYearValue = document.getElementById('recipesYearValue');
 
 // Remove/ignore old left panel ticker/api key logic
 // const tickerInput = document.getElementById('tickerInput');
@@ -140,6 +144,16 @@ window.addEventListener('DOMContentLoaded', () => {
     rightSlider.addEventListener('input', updateSliderAppearance);
     updateSliderAppearance();
 
+    // Make chart responsive to slider changes in raw tab
+    function maybePlotDataOnSliderChange() {
+        const activeTab = document.querySelector('.tab.active').dataset.tab;
+        if (activeTab === 'raw' && getCurrentTicker() && getCurrentApiKey()) {
+            plotData(getCurrentTicker(), getCurrentApiKey());
+        }
+    }
+    leftSlider.addEventListener('change', maybePlotDataOnSliderChange);
+    rightSlider.addEventListener('change', maybePlotDataOnSliderChange);
+
     // Recipes tab logic
     const recipeRadios = document.querySelectorAll('input[name="recipeSelect"]');
     recipeRadios.forEach(radio => {
@@ -167,7 +181,7 @@ window.addEventListener('DOMContentLoaded', () => {
             debugLogRecipes('Missing ticker or API key.');
             return;
         }
-        // Fetch latest CASHFLOW and INCOME_STATEMENT data
+        // Fetch all years of data for the Sankey
         const metricsConfig = [
             { metric: 'totalRevenue', source_function: 'INCOME_STATEMENT' },
             { metric: 'costOfRevenue', source_function: 'INCOME_STATEMENT' },
@@ -175,52 +189,89 @@ window.addEventListener('DOMContentLoaded', () => {
             { metric: 'researchAndDevelopment', source_function: 'INCOME_STATEMENT' },
             { metric: 'operatingExpenses', source_function: 'INCOME_STATEMENT' },
             { metric: 'capitalExpenditures', source_function: 'CASH_FLOW' },
+            { metric: 'operatingCashflow', source_function: 'CASH_FLOW' },
             { metric: 'dividendPayout', source_function: 'CASH_FLOW' }
         ];
         debugLogRecipes('Fetching financial data...');
         try {
+            // Fetch all years (20 years ago to now)
             const { rawData, fxRateUsed } = await fetchFinancialData(
                 ticker,
                 apiKey,
-                0, // startYearAgo (latest)
+                20, // startYearAgo (oldest)
                 0, // endYearAgo (latest)
                 metricsConfig
             );
             debugLogRecipes('Full rawData: ' + JSON.stringify(rawData, null, 2));
             debugLogRecipes('Data fetched. Preparing chart...');
-            // Get latest values from correct function and path, and adjust for FX
-            const totalRevenue = Number(rawData['INCOME_STATEMENT']?.annualReports?.[0]?.totalRevenue ?? 0) * fxRateUsed;
-            const operatingExpenses = Number(rawData['INCOME_STATEMENT']?.annualReports?.[0]?.operatingExpenses ?? 0) * fxRateUsed;
-            const capitalExpenditures = Number(rawData['CASH_FLOW']?.annualReports?.[0]?.capitalExpenditures ?? 0) * fxRateUsed;
-            const sga = Number(rawData['INCOME_STATEMENT']?.annualReports?.[0]?.sellingGeneralAndAdministrative ?? 0) * fxRateUsed;
-            const rnd = Number(rawData['INCOME_STATEMENT']?.annualReports?.[0]?.researchAndDevelopment ?? 0) * fxRateUsed;
-            // First level: totalRevenue -> operatingExpenses, capitalExpenditures, operatingCashflow
-            const operatingCashflow = Number(rawData['CASH_FLOW']?.annualReports?.[0]?.operatingCashflow ?? 0) * fxRateUsed;
-            // Second level: operatingExpenses -> SG&A, R&D, Other
-            const other2 = operatingExpenses - sga - rnd;
-            // Build nodes and links for Plotly multi-level Sankey, with formatted values
-            const nodes = [
-                `Total Revenue ($${formatLargeNumber(totalRevenue)})`,           // 0
-                `Operating Expenses ($${formatLargeNumber(operatingExpenses)})`, // 1
-                `Capital Expenditures ($${formatLargeNumber(capitalExpenditures)})`, // 2
-                `Operating Cashflow ($${formatLargeNumber(operatingCashflow)})`, // 3
-                `SG&A ($${formatLargeNumber(sga)})`,                             // 4
-                `R&D ($${formatLargeNumber(rnd)})`,                              // 5
-                `Other OpEx ($${formatLargeNumber(other2)})`                     // 6
-            ];
-            const links = [
-                // totalRevenue splits
-                { source: 0, target: 1, value: operatingExpenses },
-                { source: 0, target: 2, value: capitalExpenditures },
-                { source: 0, target: 3, value: operatingCashflow },
-                // operatingExpenses splits
-                { source: 1, target: 4, value: sga },
-                { source: 1, target: 5, value: rnd },
-                { source: 1, target: 6, value: other2 }
-            ];
-            debugLogRecipes(`Sankey nodes: ${JSON.stringify(nodes)}`);
-            debugLogRecipes(`Sankey links: ${JSON.stringify(links)}`);
-            renderPlotlySankeyChartMultiLevel('recipesSankeyChart', nodes, links);
+            // Extract available years from annualReports (INCOME_STATEMENT)
+            const annualReports = rawData['INCOME_STATEMENT']?.annualReports || [];
+            const cashflowReports = rawData['CASH_FLOW']?.annualReports || [];
+            // Get all unique years present in both reports
+            const years = Array.from(new Set([
+                ...annualReports.map(r => r.fiscalDateEnding?.slice(0, 4)),
+                ...cashflowReports.map(r => r.fiscalDateEnding?.slice(0, 4))
+            ].filter(Boolean))).sort((a, b) => a - b); // Ascending (oldest first)
+            if (!years.length) {
+                renderQuickChartImage('recipesSankeyChart', '');
+                debugLogRecipes('No annual data available.');
+                return;
+            }
+            // Set up the slider (oldest = 0, most recent = max)
+            recipesYearSlider.min = 0;
+            recipesYearSlider.max = years.length - 1;
+            recipesYearSlider.value = years.length - 1; // Default to most recent year
+            recipesYearSlider.disabled = years.length === 1;
+            recipesYearValue.textContent = years[years.length - 1];
+            // Helper to get report for a given year
+            function getReportByYear(reports, year) {
+                return reports.find(r => r.fiscalDateEnding?.startsWith(year));
+            }
+            // Render for selected year
+            function renderForYearIdx(idx) {
+                const year = years[idx];
+                recipesYearValue.textContent = year;
+                // Get reports for this year
+                const income = getReportByYear(annualReports, year) || {};
+                const cashflow = getReportByYear(cashflowReports, year) || {};
+                // Get values, FX adjusted
+                const totalRevenue = Number(income.totalRevenue ?? 0) * fxRateUsed;
+                const operatingExpenses = Number(income.operatingExpenses ?? 0) * fxRateUsed;
+                const capitalExpenditures = Number(cashflow.capitalExpenditures ?? 0) * fxRateUsed;
+                const sga = Number(income.sellingGeneralAndAdministrative ?? 0) * fxRateUsed;
+                const rnd = Number(income.researchAndDevelopment ?? 0) * fxRateUsed;
+                const operatingCashflow = Number(cashflow.operatingCashflow ?? 0) * fxRateUsed;
+                const other2 = operatingExpenses - sga - rnd;
+                // Build nodes and links for Plotly multi-level Sankey, with formatted values
+                const nodes = [
+                    `Total Revenue ($${formatLargeNumber(totalRevenue)})`,           // 0
+                    `Operating Expenses ($${formatLargeNumber(operatingExpenses)})`, // 1
+                    `Capital Expenditures ($${formatLargeNumber(capitalExpenditures)})`, // 2
+                    `Operating Cashflow ($${formatLargeNumber(operatingCashflow)})`, // 3
+                    `SG&A ($${formatLargeNumber(sga)})`,                             // 4
+                    `R&D ($${formatLargeNumber(rnd)})`,                              // 5
+                    `Other OpEx ($${formatLargeNumber(other2)})`                     // 6
+                ];
+                const links = [
+                    // totalRevenue splits
+                    { source: 0, target: 1, value: operatingExpenses },
+                    { source: 0, target: 2, value: capitalExpenditures },
+                    { source: 0, target: 3, value: operatingCashflow },
+                    // operatingExpenses splits
+                    { source: 1, target: 4, value: sga },
+                    { source: 1, target: 5, value: rnd },
+                    { source: 1, target: 6, value: other2 }
+                ];
+                debugLogRecipes(`Sankey nodes: ${JSON.stringify(nodes)}`);
+                debugLogRecipes(`Sankey links: ${JSON.stringify(links)}`);
+                renderPlotlySankeyChartMultiLevel('recipesSankeyChart', nodes, links);
+            }
+            // Initial render (most recent year)
+            renderForYearIdx(years.length - 1);
+            // Slider event
+            recipesYearSlider.oninput = (e) => {
+                renderForYearIdx(Number(e.target.value));
+            };
         } catch (err) {
             renderQuickChartImage('recipesSankeyChart', '');
             debugLogRecipes(`Error: ${err.message}`);
