@@ -44,6 +44,8 @@ body {
 
 .right-panel {
     flex-grow: 1;
+    width: 100%;
+    overflow-x: hidden;
 }
 
 .header {
@@ -96,6 +98,7 @@ body {
     background: #e0e7ef;
     border-radius: 12px 12px 0 0;
     box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+    justify-content: center;
 }
 
 .tab {
@@ -105,7 +108,7 @@ body {
     border: none;
     background: #e0e7ef;
     cursor: pointer;
-    text-align: left;
+    text-align: center;
     border-radius: 12px 12px 0 0;
     color: #111;
 }
@@ -410,4 +413,23 @@ input[type="range"].timeframe-slider::-moz-range-thumb {
     border: 1px solid #e2e8f0;
     border-radius: 8px;
     margin-top: 10px;
+}
+
+#recipesSankeyChart {
+    min-height: 0;
+    height: 400px;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+
+#recipesDebugPanel {
+    min-height: 40px;
+    max-height: 120px;
+    overflow-y: auto;
+    display: none;
+    max-width: 100%;
+    overflow-x: auto;
 }

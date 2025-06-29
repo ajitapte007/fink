@@ -1,6 +1,7 @@
-import { processFinancialData, getNestedValue, calculateTTM, interpolateData, findValidDate, roundDateToEndOfMonth, calculateDerivedMetric } from './processUtils.js';
+import { processFinancialData, getNestedValue, calculateTTM, interpolateData, findValidDate, roundDateToEndOfMonth, calculateDerivedMetric, formatLargeNumber } from './processUtils.js';
 import { prepareChartData } from './chartUtils.js';
 import { fetchFinancialData, addToCache, getFromCache } from './fetchUtils.js';
+import { getCashflowSankeyChartUrl, renderQuickChartImage, renderPlotlySankeyChart, renderPlotlySankeyChartMultiLevel } from './chartUtils.js';
 
 // DOM Elements for new UI
 const tickerInputTop = document.getElementById('tickerInputTop');
@@ -57,6 +58,17 @@ export function debugLog(msg) {
 }
 window.debugLog = debugLog;
 
+// Debug panel utility for Recipes tab
+function debugLogRecipes(msg) {
+    const debugPanel = document.getElementById('recipesDebugPanel');
+    if (!debugPanel) return;
+    debugPanel.style.display = 'block';
+    const p = document.createElement('div');
+    p.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+    debugPanel.appendChild(p);
+    debugPanel.scrollTop = debugPanel.scrollHeight;
+}
+
 function fetchTabData(tab) {
     debugLog(`fetchTabData called for tab: ${tab}`);
     const ticker = getCurrentTicker();
@@ -89,6 +101,10 @@ window.addEventListener('DOMContentLoaded', () => {
             showTab(tab);
             if (getCurrentTicker() && getCurrentApiKey()) {
                 fetchTabData(tab);
+                // If switching to recipes tab, rerun recipe logic
+                if (tab === 'recipes') {
+                    handleRecipeChange();
+                }
             }
         });
     }
@@ -123,6 +139,105 @@ window.addEventListener('DOMContentLoaded', () => {
     leftSlider.addEventListener('input', updateSliderAppearance);
     rightSlider.addEventListener('input', updateSliderAppearance);
     updateSliderAppearance();
+
+    // Recipes tab logic
+    const recipeRadios = document.querySelectorAll('input[name="recipeSelect"]');
+    recipeRadios.forEach(radio => {
+        radio.addEventListener('change', handleRecipeChange);
+    });
+    // Initial render
+    handleRecipeChange();
+
+    async function handleRecipeChange() {
+        const selected = document.querySelector('input[name="recipeSelect"]:checked');
+        debugLogRecipes(`Recipe selected: ${selected?.value}`);
+        if (!selected) return;
+        if (selected.value === 'cashflowOverview') {
+            await renderCashflowOverviewRecipe();
+        }
+        // Future: handle other recipes
+    }
+
+    async function renderCashflowOverviewRecipe() {
+        const ticker = getCurrentTicker();
+        const apiKey = getCurrentApiKey();
+        debugLogRecipes(`Ticker: ${ticker}, API Key: ${apiKey ? '[provided]' : '[missing]'}`);
+        if (!ticker || !apiKey) {
+            renderQuickChartImage('recipesSankeyChart', '');
+            debugLogRecipes('Missing ticker or API key.');
+            return;
+        }
+        // Fetch latest CASHFLOW and INCOME_STATEMENT data
+        const metricsConfig = [
+            { metric: 'totalRevenue', source_function: 'INCOME_STATEMENT' },
+            { metric: 'costOfRevenue', source_function: 'INCOME_STATEMENT' },
+            { metric: 'sellingGeneralAndAdministrative', source_function: 'INCOME_STATEMENT' },
+            { metric: 'researchAndDevelopment', source_function: 'INCOME_STATEMENT' },
+            { metric: 'operatingExpenses', source_function: 'INCOME_STATEMENT' },
+            { metric: 'capitalExpenditures', source_function: 'CASH_FLOW' },
+            { metric: 'dividendPayout', source_function: 'CASH_FLOW' }
+        ];
+        debugLogRecipes('Fetching financial data...');
+        try {
+            const { rawData, fxRateUsed } = await fetchFinancialData(
+                ticker,
+                apiKey,
+                0, // startYearAgo (latest)
+                0, // endYearAgo (latest)
+                metricsConfig
+            );
+            debugLogRecipes('Full rawData: ' + JSON.stringify(rawData, null, 2));
+            debugLogRecipes('Data fetched. Preparing chart...');
+            // Get latest values from correct function and path, and adjust for FX
+            const totalRevenue = Number(rawData['INCOME_STATEMENT']?.annualReports?.[0]?.totalRevenue ?? 0) * fxRateUsed;
+            const operatingExpenses = Number(rawData['INCOME_STATEMENT']?.annualReports?.[0]?.operatingExpenses ?? 0) * fxRateUsed;
+            const capitalExpenditures = Number(rawData['CASH_FLOW']?.annualReports?.[0]?.capitalExpenditures ?? 0) * fxRateUsed;
+            const sga = Number(rawData['INCOME_STATEMENT']?.annualReports?.[0]?.sellingGeneralAndAdministrative ?? 0) * fxRateUsed;
+            const rnd = Number(rawData['INCOME_STATEMENT']?.annualReports?.[0]?.researchAndDevelopment ?? 0) * fxRateUsed;
+            // First level: totalRevenue -> operatingExpenses, capitalExpenditures, operatingCashflow
+            const operatingCashflow = Number(rawData['CASH_FLOW']?.annualReports?.[0]?.operatingCashflow ?? 0) * fxRateUsed;
+            // Second level: operatingExpenses -> SG&A, R&D, Other
+            const other2 = operatingExpenses - sga - rnd;
+            // Build nodes and links for Plotly multi-level Sankey, with formatted values
+            const nodes = [
+                `Total Revenue ($${formatLargeNumber(totalRevenue)})`,           // 0
+                `Operating Expenses ($${formatLargeNumber(operatingExpenses)})`, // 1
+                `Capital Expenditures ($${formatLargeNumber(capitalExpenditures)})`, // 2
+                `Operating Cashflow ($${formatLargeNumber(operatingCashflow)})`, // 3
+                `SG&A ($${formatLargeNumber(sga)})`,                             // 4
+                `R&D ($${formatLargeNumber(rnd)})`,                              // 5
+                `Other OpEx ($${formatLargeNumber(other2)})`                     // 6
+            ];
+            const links = [
+                // totalRevenue splits
+                { source: 0, target: 1, value: operatingExpenses },
+                { source: 0, target: 2, value: capitalExpenditures },
+                { source: 0, target: 3, value: operatingCashflow },
+                // operatingExpenses splits
+                { source: 1, target: 4, value: sga },
+                { source: 1, target: 5, value: rnd },
+                { source: 1, target: 6, value: other2 }
+            ];
+            debugLogRecipes(`Sankey nodes: ${JSON.stringify(nodes)}`);
+            debugLogRecipes(`Sankey links: ${JSON.stringify(links)}`);
+            renderPlotlySankeyChartMultiLevel('recipesSankeyChart', nodes, links);
+        } catch (err) {
+            renderQuickChartImage('recipesSankeyChart', '');
+            debugLogRecipes(`Error: ${err.message}`);
+        }
+    }
+
+    // Also re-run recipe logic if ticker or API key changes and recipes tab is active
+    tickerInputTop.addEventListener('input', () => {
+        if (document.querySelector('.tab.active').dataset.tab === 'recipes') {
+            handleRecipeChange();
+        }
+    });
+    alphaVantageApiKeyTop.addEventListener('input', () => {
+        if (document.querySelector('.tab.active').dataset.tab === 'recipes') {
+            handleRecipeChange();
+        }
+    });
 });
 
 // Load button triggers fetch for the currently active tab

@@ -1,4 +1,5 @@
 import { prepareChartData } from './chartUtils.js';
+import { getCashflowSankeyChartUrl } from './chartUtils.js';
 // Add tests for prepareChartData here, moved from script.test.js if any exist.
 // (No prepareChartData-specific tests were present in the provided script.test.js, but this is the correct structure for future tests.) 
 
@@ -56,5 +57,47 @@ describe('prepareChartData', () => {
         const result = prepareChartData(processedMetrics, ['price', 'revenue'], metricsConfig);
         expect(result.commonLabels).toEqual(['2023-01-31', '2023-02-28']);
         expect(result.datasets[1].data).toEqual([200, null]);
+    });
+});
+
+describe('getCashflowSankeyChartUrl', () => {
+    it('generates a valid QuickChart URL for a simple cashflow overview', () => {
+        const url = getCashflowSankeyChartUrl({
+            input: 'Total Revenue',
+            outputs: [
+                { label: 'Cost of Revenue', value: 100 },
+                { label: 'SG&A', value: 50 },
+                { label: 'R&D', value: 25 }
+            ],
+            inputLabel: 'Total Revenue'
+        });
+        expect(url).toContain('quickchart.io/chart?c=');
+        const configPart = url.split('c=')[1].split('&')[0];
+        const decoded = decodeURIComponent(configPart);
+        const config = JSON.parse(decoded);
+        expect(config.type).toBe('sankey');
+        expect(config.data.datasets[0].data).toEqual([
+            { from: 'Total Revenue', to: 'Cost of Revenue', flow: 100 },
+            { from: 'Total Revenue', to: 'SG&A', flow: 50 },
+            { from: 'Total Revenue', to: 'R&D', flow: 25 }
+        ]);
+    });
+    it('filters out null/undefined/NaN outputs', () => {
+        const url = getCashflowSankeyChartUrl({
+            input: 'Total Revenue',
+            outputs: [
+                { label: 'Cost of Revenue', value: 100 },
+                { label: 'SG&A', value: null },
+                { label: 'R&D', value: undefined },
+                { label: 'Operating Expenses', value: NaN }
+            ],
+            inputLabel: 'Total Revenue'
+        });
+        const configPart = url.split('c=')[1].split('&')[0];
+        const decoded = decodeURIComponent(configPart);
+        const config = JSON.parse(decoded);
+        expect(config.data.datasets[0].data).toEqual([
+            { from: 'Total Revenue', to: 'Cost of Revenue', flow: 100 }
+        ]);
     });
 }); 

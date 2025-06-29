@@ -9,6 +9,8 @@
     <!-- Chart.js CDN for interactive charts -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script>
     <link rel="stylesheet" href="styles.css">
+    <!-- Plotly.js for interactive Sankey diagrams -->
+    <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
 </head>
 <body>
     <div class="header">
@@ -124,9 +126,25 @@
         </div>
     </div>
     <div class="tab-content" id="tab-recipes">
-        <div class="panel recipes-panel">
-            <h2 class="text-2xl font-bold mb-4">Recipes (Advanced)</h2>
-            <p>Coming soon: Advanced recipes and custom analytics!</p>
+        <div class="main-container">
+            <!-- Left Panel for Recipe Selection -->
+            <div class="panel left-panel">
+                <div class="metric-group">
+                    <h3 class="text-md font-semibold text-gray-700 mb-2">Recipes</h3>
+                    <div class="flex flex-col items-start gap-2">
+                        <div class="radio-item">
+                            <input type="radio" id="recipeCashflowOverview" name="recipeSelect" value="cashflowOverview" checked>
+                            <label for="recipeCashflowOverview">Cashflow Overview</label>
+                        </div>
+                        <!-- Add more recipes here in the future -->
+                    </div>
+                </div>
+            </div>
+            <!-- Right Panel for Chart -->
+            <div class="panel right-panel">
+                <div id="recipesSankeyChart"></div>
+                <div id="recipesDebugPanel" class="w-full mt-4 p-3 bg-gray-100 border border-gray-300 rounded-lg text-xs font-mono"></div>
+            </div>
         </div>
     </div>
     <script type="module" src="script.js"></script>

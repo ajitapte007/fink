@@ -277,4 +277,21 @@ export function processFinancialData(rawData, fxRateUsed, startDate, endDate, me
     });
 
     return interpolatedMetrics;
+}
+
+/**
+ * Formats a number as billions (B) or millions (M) with 2 decimal places.
+ * @param {number} value
+ * @returns {string}
+ */
+export function formatLargeNumber(value) {
+    if (value === null || value === undefined || isNaN(value)) return '';
+    const absValue = Math.abs(value);
+    if (absValue >= 1e9) {
+        return (value / 1e9).toFixed(2) + 'B';
+    } else if (absValue >= 1e6) {
+        return (value / 1e6).toFixed(2) + 'M';
+    } else {
+        return value.toLocaleString();
+    }
 } 
