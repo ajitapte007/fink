@@ -2,26 +2,188 @@ import { processFinancialData, getNestedValue, calculateTTM, interpolateData, fi
 import { prepareChartData } from './chartUtils.js';
 import { fetchFinancialData, addToCache, getFromCache } from './fetchUtils.js';
 
-// DOM Elements
-const tickerInput = document.getElementById('tickerInput');
-const alphaVantageApiKeyInput = document.getElementById('alphaVantageApiKey');
-const timeframeSelect = document.getElementById('timeframeSelect');
+// DOM Elements for new UI
+const tickerInputTop = document.getElementById('tickerInputTop');
+const alphaVantageApiKeyTop = document.getElementById('alphaVantageApiKeyTop');
+const loadBtn = document.getElementById('loadBtn');
+const tabButtons = document.querySelectorAll('.tab');
+const tabContents = document.querySelectorAll('.tab-content');
+// Add these for slider and label
 const leftSlider = document.getElementById('leftSlider');
 const rightSlider = document.getElementById('rightSlider');
-const yearRangeLabel = document.getElementById('year-range-label');
 const sliderTrack = document.querySelector('.slider-track');
-const fetchButton = document.getElementById('fetchButton');
+const yearRangeLabel = document.getElementById('year-range-label');
 const messageDisplay = document.getElementById('message');
-const priceChartCanvas = document.getElementById('priceChart');
-const papertrailLog = document.getElementById('papertrailLog');
-const loadingSpinner = document.getElementById('loadingSpinner');
 const togglePriceCheckbox = document.getElementById('togglePrice');
-const selectPERatioRadio = document.getElementById('selectPERatio');
-const selectPSRatioRadio = document.getElementById('selectPSRatio');
-const selectSharesOutstandingRadio = document.getElementById('selectSharesOutstanding');
-const selectDividendsRadio = document.getElementById('selectDividends');
 const ratioSelectRadios = document.querySelectorAll('input[name="ratioSelect"]');
+const priceChartCanvas = document.getElementById('priceChart');
 
+// Remove/ignore old left panel ticker/api key logic
+// const tickerInput = document.getElementById('tickerInput');
+// const alphaVantageApiKeyInput = document.getElementById('alphaVantageApiKey');
+
+// Track which tabs have loaded data for the current ticker/key
+let loadedTabs = { raw: false, recipes: false };
+let lastTicker = '';
+let lastApiKey = '';
+
+function resetLoadedTabs() {
+    loadedTabs = { raw: false, recipes: false };
+}
+
+function getCurrentTicker() {
+    return tickerInputTop.value.trim().toUpperCase();
+}
+function getCurrentApiKey() {
+    return alphaVantageApiKeyTop.value.trim();
+}
+
+function showTab(tab) {
+    tabButtons.forEach(btn => btn.classList.remove('active'));
+    tabContents.forEach(content => content.style.display = 'none');
+    document.querySelector('.tab[data-tab="' + tab + '"]').classList.add('active');
+    document.getElementById('tab-' + tab).style.display = 'block';
+}
+
+// Debug panel utility
+export function debugLog(msg) {
+    const debugPanel = document.getElementById('debugPanel');
+    if (!debugPanel) return;
+    debugPanel.style.display = 'block';
+    const p = document.createElement('div');
+    p.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+    debugPanel.appendChild(p);
+    debugPanel.scrollTop = debugPanel.scrollHeight;
+}
+window.debugLog = debugLog;
+
+function fetchTabData(tab) {
+    debugLog(`fetchTabData called for tab: ${tab}`);
+    const ticker = getCurrentTicker();
+    const apiKey = getCurrentApiKey();
+    debugLog(`Ticker: ${ticker}, API Key: ${apiKey ? '[provided]' : '[missing]'}`);
+    if (!ticker || !apiKey) return;
+    if (tab === 'raw' && !loadedTabs.raw) {
+        debugLog('Calling plotData for raw tab...');
+        plotData(ticker, apiKey);
+        loadedTabs.raw = true;
+    } else if (tab === 'recipes' && !loadedTabs.recipes) {
+        debugLog('Recipes tab selected (no-op for now).');
+        loadedTabs.recipes = true;
+    }
+}
+
+// Ensure tab click logic works after DOM is loaded
+window.addEventListener('DOMContentLoaded', () => {
+    const tabButtons = document.querySelectorAll('.tab');
+    const tabContents = document.querySelectorAll('.tab-content');
+    function showTab(tab) {
+        tabButtons.forEach(btn => btn.classList.remove('active'));
+        tabContents.forEach(content => content.style.display = 'none');
+        document.querySelector('.tab[data-tab="' + tab + '"]').classList.add('active');
+        document.getElementById('tab-' + tab).style.display = 'block';
+    }
+    for (const btn of tabButtons) {
+        btn.addEventListener('click', function() {
+            const tab = this.dataset.tab;
+            showTab(tab);
+            if (getCurrentTicker() && getCurrentApiKey()) {
+                fetchTabData(tab);
+            }
+        });
+    }
+    // Open Tab 1 by default
+    showTab('raw');
+
+    // DOM element references
+    const leftSlider = document.getElementById('leftSlider');
+    const rightSlider = document.getElementById('rightSlider');
+    const sliderTrack = document.querySelector('.slider-track');
+    const yearRangeLabel = document.getElementById('year-range-label');
+
+    // Slider label update logic
+    function updateSliderAppearance() {
+        const min = parseInt(leftSlider.min);
+        const max = parseInt(leftSlider.max);
+        let leftValue = parseInt(leftSlider.value);
+        let rightValue = parseInt(rightSlider.value);
+        if (leftValue > rightValue) {
+            [leftValue, rightValue] = [rightValue, leftValue];
+            leftSlider.value = leftValue;
+            rightSlider.value = rightValue;
+        }
+        const leftPercent = ((leftValue - min) / (max - min)) * 100;
+        const rightPercent = ((rightValue - min) / (max - min)) * 100;
+        sliderTrack.style.background = `linear-gradient(to right, #e2e8f0 ${leftPercent}%, #3b82f6 ${leftPercent}%, #3b82f6 ${rightPercent}%, #e2e8f0 ${rightPercent}%)`;
+        const currentYear = new Date().getFullYear();
+        const startYear = currentYear - (20 - leftValue);
+        const endYear = currentYear - (20 - rightValue);
+        yearRangeLabel.textContent = `Start: ${startYear} | End: ${endYear}`;
+    }
+    leftSlider.addEventListener('input', updateSliderAppearance);
+    rightSlider.addEventListener('input', updateSliderAppearance);
+    updateSliderAppearance();
+});
+
+// Load button triggers fetch for the currently active tab
+loadBtn.addEventListener('click', function() {
+    // If ticker or API key changed, reset loadedTabs
+    if (getCurrentTicker() !== lastTicker || getCurrentApiKey() !== lastApiKey) {
+        resetLoadedTabs();
+        lastTicker = getCurrentTicker();
+        lastApiKey = getCurrentApiKey();
+    }
+    const activeTab = document.querySelector('.tab.active').dataset.tab;
+    fetchTabData(activeTab);
+});
+
+// Update plotData to accept ticker/apiKey as arguments
+async function plotData(ticker, apiKey) {
+    debugLog('Entered plotData');
+    showLoadingSpinner();
+    displayMessage('Fetching and processing data... Please wait.', 'info');
+
+    // Use arguments, not DOM elements
+    // Convert slider position to "years ago"
+    const startYearAgo = 20 - parseInt(leftSlider.value);
+    const endYearAgo = 20 - parseInt(rightSlider.value);
+    debugLog(`Slider years: startYearAgo=${startYearAgo}, endYearAgo=${endYearAgo}`);
+
+    if (!ticker || !apiKey) {
+        debugLog('Missing ticker or API key');
+        displayMessage('Ticker and Alpha Vantage API Key are required.', 'error');
+        hideLoadingSpinner();
+        return;
+    }
+
+    try {
+        const now = new Date();
+        const startDate = new Date(new Date().setFullYear(now.getFullYear() - startYearAgo));
+        const endDate = new Date(new Date().setFullYear(now.getFullYear() - endYearAgo));
+        debugLog(`Fetching data for ${ticker} from ${startDate.toISOString()} to ${endDate.toISOString()}`);
+        const { rawData, fxRateUsed } = await fetchFinancialData(ticker, apiKey, startDate, endDate, metricsConfig);
+        debugLog('fetchFinancialData returned');
+        const processedMetrics = processFinancialData(rawData, fxRateUsed, startDate, endDate, metricsConfig);
+        debugLog('processFinancialData returned');
+        const chartData = prepareChartData(processedMetrics, getSelectedMetricsForPlotting(), metricsConfig);
+        debugLog('prepareChartData returned');
+        if (chartData) {
+            createOrUpdateChart(chartData);
+            lastFetchedChartData = { ...chartData, processedMetrics }; // Cache both chart data and processed metrics
+            displayMessage('Chart updated successfully.', 'success');
+            debugLog('Chart created/updated');
+        } else {
+            debugLog('No chartData to plot');
+        }
+    } catch (error) {
+        debugLog('Error in plotData: ' + error.message);
+        console.error("An error occurred during plotting:", error);
+        displayMessage(`An error occurred: ${error.message}`, 'error');
+    } finally {
+        hideLoadingSpinner();
+        debugLog('Spinner hidden');
+    }
+}
 
 let myChart; // Variable to hold the Chart.js instance
 let lastFetchedChartData = null; // Store last fetched and processed data
@@ -271,35 +433,10 @@ function displayMessage(msg, type) {
 }
 
 /**
- * Appends a message to the papertrail log.
- * @param {string} msg The message to log.
- */
-function appendToPapertrail(msg) {
-    if (typeof papertrailLog === 'undefined' || !papertrailLog || typeof document === 'undefined') {
-        // In test or non-browser environment, do nothing (or optionally: console.log(msg));
-        return;
-    }
-    papertrailLog.classList.remove('hidden');
-    const p = document.createElement('p');
-    p.textContent = `• ${msg}`;
-    papertrailLog.appendChild(p);
-    papertrailLog.scrollTop = papertrailLog.scrollHeight;
-}
-
-/**
- * Clears the papertrail log.
- */
-function clearPapertrail() {
-    papertrailLog.classList.add('hidden');
-    papertrailLog.innerHTML = '<h3 class="text-lg font-semibold text-gray-700 mb-2">Execution Papertrail:</h3>';
-}
-
-/**
  * Shows the loading spinner.
  */
 function showLoadingSpinner() {
     loadingSpinner.style.display = 'block';
-    fetchButton.disabled = true;
 }
 
 /**
@@ -307,14 +444,12 @@ function showLoadingSpinner() {
  */
 function hideLoadingSpinner() {
     loadingSpinner.style.display = 'none';
-    fetchButton.disabled = false;
 }
 
 /**
  * Initializes the Alpha Vantage API knowledge base from metricsConfig.
  */
 async function initializeAlphaVantageDataKnowledgeBase() {
-    appendToPapertrail('Initializing Alpha Vantage API knowledge base from metrics configuration...');
     alphaVantageAPIKnowledgeBase = {}; // Reset to ensure fresh init
 
     metricsConfig.forEach(metric => {
@@ -332,7 +467,6 @@ async function initializeAlphaVantageDataKnowledgeBase() {
         }
         // Derived metrics don't need to be in alphaVantageAPIKnowledgeBase as they are calculated locally
     });
-    appendToPapertrail(`Alpha Vantage knowledge base initialized with ${Object.keys(alphaVantageAPIKnowledgeBase).length} raw metrics.`);
 }
 
 /**
@@ -527,47 +661,6 @@ function createOrUpdateChart(chartData) {
             elements: { point: { radius: 2, hoverRadius: 5 } }
         }
     });
-    appendToPapertrail('Chart created or updated successfully.');
-}
-
-// Main function to orchestrate fetching and plotting
-async function plotData() {
-    clearPapertrail();
-    showLoadingSpinner();
-    displayMessage('Fetching and processing data... Please wait.', 'info');
-
-    const ticker = tickerInput.value.trim().toUpperCase();
-    const alphaVantageApiKey = alphaVantageApiKeyInput.value.trim();
-    
-    // Convert slider position to "years ago"
-    const startYearAgo = 20 - parseInt(leftSlider.value);
-    const endYearAgo = 20 - parseInt(rightSlider.value);
-
-    if (!ticker || !alphaVantageApiKey) {
-        displayMessage('Ticker and Alpha Vantage API Key are required.', 'error');
-        hideLoadingSpinner();
-        return;
-    }
-
-    try {
-        const now = new Date();
-        const startDate = new Date(new Date().setFullYear(now.getFullYear() - startYearAgo));
-        const endDate = new Date(new Date().setFullYear(now.getFullYear() - endYearAgo));
-        const { rawData, fxRateUsed } = await fetchFinancialData(ticker, alphaVantageApiKey, startDate, endDate, metricsConfig);
-        const processedMetrics = processFinancialData(rawData, fxRateUsed, startDate, endDate, metricsConfig);
-        const chartData = prepareChartData(processedMetrics, getSelectedMetricsForPlotting(), metricsConfig);
-        if (chartData) {
-            createOrUpdateChart(chartData);
-            lastFetchedChartData = { ...chartData, processedMetrics }; // Cache both chart data and processed metrics
-            displayMessage('Chart updated successfully.', 'success');
-        }
-    } catch (error) {
-        console.error("An error occurred during plotting:", error);
-        displayMessage(`An error occurred: ${error.message}`, 'error');
-        appendToPapertrail(`Fatal error during plotData: ${error.stack}`);
-    } finally {
-        hideLoadingSpinner();
-    }
 }
 
 // Function to replot based on UI changes without re-fetching
@@ -578,7 +671,6 @@ function replotFromCache() {
         const selectedMetrics = getSelectedMetricsForPlotting() || [];
         const { datasets, commonLabels } = prepareChartData(processedMetrics, selectedMetrics, metricsConfig);
         createOrUpdateChart({ ...lastFetchedChartData, datasets, commonLabels });
-        appendToPapertrail('Re-plotted metrics from cached data.');
     }
 }
 
@@ -586,7 +678,7 @@ function replotFromCache() {
 if (typeof window !== 'undefined') {
     window.addEventListener('DOMContentLoaded', () => {
         initializeAlphaVantageDataKnowledgeBase();
-        fetchButton.addEventListener('click', plotData);
+        // Removed: fetchButton.addEventListener('click', plotData);
 
         // Add listeners to UI controls to replot from cache
         togglePriceCheckbox.addEventListener('change', replotFromCache);

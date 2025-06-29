@@ -46,6 +46,7 @@ export function getFromCache(key) {
  * @returns {Promise<{rawData: object, fxRateUsed: number}>}
  */
 export async function fetchFinancialData(ticker, alphaVantageApiKey, startYearAgo, endYearAgo, metricsConfig) {
+    window.debugLog && window.debugLog(`[fetchFinancialData] called for ticker=${ticker}`);
     const fetchedRawData = {};
     const alphaVantageCalls = [];
     const functionsToFetch = new Set(metricsConfig.map(m => m.source_function).filter(Boolean));
@@ -55,27 +56,34 @@ export async function fetchFinancialData(ticker, alphaVantageApiKey, startYearAg
         if (func === 'TIME_SERIES_MONTHLY_ADJUSTED') {
             url += `&outputsize=full`;
         }
+        window.debugLog && window.debugLog(`[fetchFinancialData] checking cache for ${func}`);
         const cachedData = getFromCache(url);
         if (cachedData) {
+            window.debugLog && window.debugLog(`[fetchFinancialData] cache hit for ${func}`);
             fetchedRawData[func] = cachedData;
         } else {
+            window.debugLog && window.debugLog(`[fetchFinancialData] fetching ${func} from API`);
             alphaVantageCalls.push(
                 fetch(url)
                     .then(response => response.json())
                     .then(data => {
                         if (data["Error Message"] || data["Note"]) {
+                            window.debugLog && window.debugLog(`[fetchFinancialData] API error for ${func}: ${data["Error Message"] || data["Note"]}`);
                             throw new Error(data["Error Message"] || data["Note"] || `API error for ${func}.`);
                         }
+                        window.debugLog && window.debugLog(`[fetchFinancialData] fetched ${func} successfully`);
                         fetchedRawData[func] = data;
                         addToCache(url, data);
                     })
                     .catch(error => {
+                        window.debugLog && window.debugLog(`[fetchFinancialData] failed to fetch ${func}: ${error.message}`);
                         fetchedRawData[func] = { error: `Failed to fetch ${func}: ${error.message}` };
                     })
             );
         }
     }
     await Promise.all(alphaVantageCalls);
+    window.debugLog && window.debugLog(`[fetchFinancialData] all API calls complete`);
 
     // Only consider these endpoints for currency detection
     const currencyEndpoints = ['CASH_FLOW', 'INCOME_STATEMENT', 'BALANCE_SHEET'];
@@ -94,6 +102,7 @@ export async function fetchFinancialData(ticker, alphaVantageApiKey, startYearAg
             break;
         }
     }
+    window.debugLog && window.debugLog(`[fetchFinancialData] detected currency: ${localCurrency}`);
     // Fetch FX rate series if needed
     let fxRateUsed = 1.0;
     if (localCurrency !== 'USD') {
@@ -101,8 +110,10 @@ export async function fetchFinancialData(ticker, alphaVantageApiKey, startYearAg
         let fxData;
         const cachedFX = getFromCache(fxUrl);
         if (cachedFX) {
+            window.debugLog && window.debugLog(`[fetchFinancialData] FX cache hit for ${localCurrency}->USD`);
             fxData = cachedFX;
         } else {
+            window.debugLog && window.debugLog(`[fetchFinancialData] fetching FX rate for ${localCurrency}->USD`);
             fxData = await fetch(fxUrl).then(r => r.json());
             addToCache(fxUrl, fxData);
         }
@@ -110,13 +121,13 @@ export async function fetchFinancialData(ticker, alphaVantageApiKey, startYearAg
         if (fxData && fxData["Time Series FX (Monthly)"]) {
             const entries = Object.entries(fxData["Time Series FX (Monthly)"]);
             if (entries.length > 0) {
-                // Pick the most recent (first) FX rate
                 mostRecentFX = parseFloat(entries[0][1]["4. close"]);
             }
         }
-        // Use this single FX rate for all conversions
         fxRateUsed = mostRecentFX;
+        window.debugLog && window.debugLog(`[fetchFinancialData] FX rate used: ${fxRateUsed}`);
     }
 
+    window.debugLog && window.debugLog(`[fetchFinancialData] returning data`);
     return { rawData: fetchedRawData, fxRateUsed };
 } 
