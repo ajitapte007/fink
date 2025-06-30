@@ -59,7 +59,11 @@
                             </div>
                             <div class="radio-item">
                                 <input type="radio" id="selectFCF" name="ratioSelect" value="FCF">
-                                <label for="selectFCF">Free Cash Flow</label>
+                                <label for="selectFCF">Free Cash Flow (FCF)</label>
+                            </div>
+                            <div class="radio-item">
+                                <input type="radio" id="selectOperatingCashflow" name="ratioSelect" value="OPERATING_CASHFLOW">
+                                <label for="selectOperatingCashflow">Operating Cash Flow (OCF)</label>
                             </div>
                         </div>
                     </div>
@@ -79,6 +83,10 @@
                                 <input type="radio" id="selectPFCFRatio" name="ratioSelect" class="h-4 w-4 text-blue-600 border-gray-300" value="PFCF">
                                 <label for="selectPFCFRatio" class="ml-2 block text-sm text-gray-900">P/FCF</label>
                             </div>
+                            <div class="flex items-center">
+                                <input type="radio" id="selectPOcfRatio" name="ratioSelect" class="h-4 w-4 text-blue-600 border-gray-300" value="POCF">
+                                <label for="selectPOcfRatio" class="ml-2 block text-sm text-gray-900">P/OCF</label>
+                            </div>
                         </div>
                     </div>
 
@@ -96,6 +104,14 @@
                             <div class="flex items-center">
                                 <input type="radio" id="selectDividendYield" name="ratioSelect" class="h-4 w-4 text-blue-600 border-gray-300" value="DIVYIELD">
                                 <label for="selectDividendYield" class="ml-2 block text-sm text-gray-900">Dividend Yield (TTM)</label>
+                            </div>
+                            <div class="flex items-center">
+                                <input type="radio" id="selectPayoutRatioFcf" name="ratioSelect" class="h-4 w-4 text-blue-600 border-gray-300" value="PAYOUT_RATIO_FCF">
+                                <label for="selectPayoutRatioFcf" class="ml-2 block text-sm text-gray-900">Payout Ratio (FCF)</label>
+                            </div>
+                            <div class="flex items-center">
+                                <input type="radio" id="selectPayoutRatioOcf" name="ratioSelect" class="h-4 w-4 text-blue-600 border-gray-300" value="PAYOUT_RATIO_OCF">
+                                <label for="selectPayoutRatioOcf" class="ml-2 block text-sm text-gray-900">Payout Ratio (OCF)</label>
                             </div>
                         </div>
                     </div>

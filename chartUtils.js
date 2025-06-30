@@ -35,7 +35,9 @@ export function prepareChartData(processedMetrics, selectedMetrics, metricsConfi
             borderColor: metricConfig.color,
             backgroundColor: metricConfig.color,
             yAxisID: metricConfig.axis,
-            tension: 0.1
+            tension: 0.1,
+            fill: false,
+            spanGaps: true
         });
     }
     return { datasets: datasetsForChart, commonLabels };

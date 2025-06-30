@@ -230,4 +230,121 @@ describe('processFinancialData', () => {
         expect(processedMetrics.annualRevenue[1].value).toBeCloseTo(220);
         expect(processedMetrics.annualRevenue[2].value).toBeCloseTo(240);
     });
+
+    it('should extract and FX-adjust new metrics (OCF, OCF per share, P/OCF, payout ratios)', () => {
+        const metricsConfigExtended = [
+            ...metricsConfig,
+            {
+                id: 'operatingCashflow',
+                label: 'Operating Cash Flow',
+                type: 'raw_fundamental',
+                source_function: 'CASH_FLOW',
+                source_path: ['annualReports', 'operatingCashflow'],
+                date_keys: 'fiscalDateEnding',
+                isTimeSeries: false,
+                is_plottable: true,
+                fx_adjust: true
+            },
+            {
+                id: 'operatingCashflowPerShare',
+                label: 'Operating Cash Flow Per Share',
+                type: 'derived_custom',
+                calculation_formula: 'operatingCashflow / commonSharesOutstanding',
+                is_plottable: false
+            },
+            {
+                id: 'price',
+                label: 'Adjusted Close Price',
+                type: 'raw_time_series',
+                source_function: 'TIME_SERIES_MONTHLY_ADJUSTED',
+                source_path: ['Monthly Adjusted Time Series', '5. adjusted close'],
+                isTimeSeries: true,
+                is_plottable: true,
+                fx_adjust: false
+            },
+            {
+                id: 'dividendPayout',
+                label: 'Dividend Payout',
+                type: 'raw_fundamental',
+                source_function: 'CASH_FLOW',
+                source_path: ['annualReports', 'dividendPayout'],
+                date_keys: 'fiscalDateEnding',
+                isTimeSeries: false,
+                is_plottable: false,
+                fx_adjust: true
+            },
+            {
+                id: 'fcf',
+                label: 'Free Cash Flow',
+                type: 'derived_custom',
+                calculation_formula: 'operatingCashflow - capitalExpenditures',
+                is_plottable: false
+            },
+            {
+                id: 'capitalExpenditures',
+                label: 'Capital Expenditures',
+                type: 'raw_fundamental',
+                source_function: 'CASH_FLOW',
+                source_path: ['annualReports', 'capitalExpenditures'],
+                date_keys: 'fiscalDateEnding',
+                isTimeSeries: false,
+                is_plottable: false,
+                fx_adjust: true
+            },
+            {
+                id: 'pOcfRatio',
+                label: 'P/OCF',
+                type: 'derived_ratio',
+                calculation_formula: 'price / operatingCashflowPerShare',
+                is_plottable: true
+            },
+            {
+                id: 'payoutRatioFcf',
+                label: 'Payout Ratio (FCF)',
+                type: 'derived_ratio',
+                calculation_formula: 'dividendPayout / fcf',
+                is_plottable: true
+            },
+            {
+                id: 'payoutRatioOcf',
+                label: 'Payout Ratio (OCF)',
+                type: 'derived_ratio',
+                calculation_formula: 'dividendPayout / operatingCashflow',
+                is_plottable: true
+            }
+        ];
+        const rawData = {
+            'CASH_FLOW': {
+                annualReports: [
+                    { fiscalDateEnding: '2023-12-31', operatingCashflow: '1000', dividendPayout: '200', capitalExpenditures: '300', reportedCurrency: 'EUR' }
+                ]
+            },
+            'BALANCE_SHEET': {
+                annualReports: [
+                    { fiscalDateEnding: '2023-12-31', commonStockSharesOutstanding: '100' }
+                ]
+            },
+            'TIME_SERIES_MONTHLY_ADJUSTED': {
+                'Monthly Adjusted Time Series': {
+                    '2023-12-31': { '5. adjusted close': '50' }
+                }
+            }
+        };
+        const fxRateUsed = 1.1;
+        const startDate = new Date('2023-12-31');
+        const endDate = new Date('2023-12-31');
+        const processed = processFinancialData(rawData, fxRateUsed, startDate, endDate, metricsConfigExtended);
+        // OCF
+        expect(processed.operatingCashflow[0].value).toBeCloseTo(1000 * 1.1);
+        // OCF per share
+        expect(processed.operatingCashflowPerShare[0].value).toBeCloseTo((1000 * 1.1) / 100);
+        // P/OCF
+        expect(processed.pOcfRatio[0].value).toBeCloseTo(50 / ((1000 * 1.1) / 100));
+        // FCF
+        expect(processed.fcf[0].value).toBeCloseTo((1000 * 1.1) - (300 * 1.1));
+        // Payout Ratio (FCF)
+        expect(processed.payoutRatioFcf[0].value).toBeCloseTo((200 * 1.1) / ((1000 * 1.1) - (300 * 1.1)));
+        // Payout Ratio (OCF)
+        expect(processed.payoutRatioOcf[0].value).toBeCloseTo((200 * 1.1) / (1000 * 1.1));
+    });
 }); 

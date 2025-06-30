@@ -559,13 +559,54 @@ export const metricsConfig = [
     },
     {
         id: 'operatingCashflow',
-        label: 'Operating Cashflow',
+        label: 'Operating Cash Flow',
         type: 'raw_fundamental',
         source_function: 'CASH_FLOW',
         source_path: ['annualReports', 'operatingCashflow'],
         date_keys: 'fiscalDateEnding',
-        is_plottable: false, // For calculation only
-        isTimeSeries: false
+        color: 'rgb(255, 140, 0)',
+        axis: 'y-ratio',
+        ui_radio_id: 'selectOperatingCashflow',
+        is_plottable: true,
+        isTimeSeries: false,
+        fx_adjust: true
+    },
+    {
+        id: 'operatingCashflowPerShare',
+        label: 'Operating Cash Flow Per Share',
+        type: 'derived_custom',
+        calculation_formula: 'operatingCashflow / commonSharesOutstanding',
+        is_plottable: false
+    },
+    {
+        id: 'pOcfRatio',
+        label: 'P/OCF',
+        type: 'derived_ratio',
+        calculation_formula: 'price / operatingCashflowPerShare',
+        color: 'rgb(255, 140, 0)',
+        axis: 'y-ratio',
+        ui_radio_id: 'selectPOcfRatio',
+        is_plottable: true
+    },
+    {
+        id: 'payoutRatioFcf',
+        label: 'Payout Ratio (FCF)',
+        type: 'derived_ratio',
+        calculation_formula: 'dividendPayout / fcf',
+        color: 'rgb(255, 99, 132)',
+        axis: 'y-ratio',
+        ui_radio_id: 'selectPayoutRatioFcf',
+        is_plottable: true
+    },
+    {
+        id: 'payoutRatioOcf',
+        label: 'Payout Ratio (OCF)',
+        type: 'derived_ratio',
+        calculation_formula: 'dividendPayout / operatingCashflow',
+        color: 'rgb(255, 140, 0)',
+        axis: 'y-ratio',
+        ui_radio_id: 'selectPayoutRatioOcf',
+        is_plottable: true
     },
     {
         id: 'fcf',
@@ -714,7 +755,6 @@ function createOrUpdateChart(chartData) {
             const metric = metricsConfig.find(m => m.ui_radio_id === selectedRadio.id);
             if (metric) yRatioTitle = metric.label;
         }
-
         yAxes['y-ratio'] = { 
             type: 'linear', 
             position: 'right', 
@@ -723,11 +763,12 @@ function createOrUpdateChart(chartData) {
             ticks: {
                 callback: function(value) {
                     if (!selectedRadio) return value.toFixed(2);
-                    
                     const metric = metricsConfig.find(m => m.ui_radio_id === selectedRadio.id);
                     if (!metric) return value.toFixed(2);
-
                     switch (metric.id) {
+                        case 'payoutRatioFcf':
+                        case 'payoutRatioOcf':
+                            return `${(value * 100).toFixed(2)}%`;
                         case 'commonSharesOutstanding':
                             if (Math.abs(value) >= 1e9) return `${(value / 1e9).toFixed(2)}B`;
                             if (Math.abs(value) >= 1e6) return `${(value / 1e6).toFixed(2)}M`;
@@ -815,6 +856,9 @@ function createOrUpdateChart(chartData) {
                                     if (Math.abs(value) >= 1e9) return `${displayLabel}: ${(value / 1e9).toFixed(2)}B`;
                                     if (Math.abs(value) >= 1e6) return `${displayLabel}: ${(value / 1e6).toFixed(2)}M`;
                                     return `${displayLabel}: ${value.toLocaleString()}`;
+                                case 'Payout Ratio (FCF)':
+                                case 'Payout Ratio (OCF)':
+                                    return `${displayLabel}: ${(value * 100).toFixed(2)}%`;
                                 default:
                                     return `${displayLabel}: ${value.toLocaleString()}`;
                             }

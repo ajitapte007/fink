@@ -193,61 +193,58 @@ export function processFinancialData(rawData, fxRateUsed, startDate, endDate, me
         processedMetrics[mc.id] = calculateTTM(processedMetrics[mc.calculation_basis]);
     });
 
-    // Custom Derived Metrics (RPS, FCF, TTM Dividends per share)
-    const calculateCustomMetric = (metricId, formula, operation) => {
-        const metricConf = metricsConfig.find(m => m.id === metricId);
-        if (!metricConf) return;
-        
+    // Generic calculation for all derived_custom metrics
+    metricsConfig.filter(m => m.type === 'derived_custom').forEach(mc => {
+        const formula = mc.calculation_formula;
+        // Only support simple binary operations for now
+        let operation = null;
+        if (formula.includes(' - ')) operation = 'subtract';
+        else if (formula.includes(' / ')) operation = 'divide';
+        else return;
         const [id1, id2] = formula.split(operation === 'subtract' ? ' - ' : ' / ');
         const data1 = processedMetrics[id1.trim()];
         const data2 = processedMetrics[id2.trim()];
-        
         if (data1 && data2) {
             const result = {};
             const toMap = (data) => new Map(
-                Array.isArray(data) 
-                    ? data.map(item => [new Date(item.date).getFullYear(), item.value]) 
+                Array.isArray(data)
+                    ? data.map(item => [new Date(item.date).getFullYear(), item.value])
                     : Object.entries(data).map(([date, value]) => [new Date(date).getFullYear(), value])
             );
-
             const map1 = toMap(data1);
             const map2 = toMap(data2);
-
             for (const [year, val1] of map1.entries()) {
                 const val2 = map2.get(year);
                 if (typeof val2 !== 'undefined') {
                     const originalDateSource = Array.isArray(data1) ? data1 : (Array.isArray(data2) ? data2 : null);
                     let originalDate;
                     if (originalDateSource) {
-                       originalDate = originalDateSource.find(item => new Date(item.date).getFullYear() === year).date;
+                        originalDate = originalDateSource.find(item => new Date(item.date).getFullYear() === year).date;
                     } else {
                         originalDate = Object.keys(data1).find(date => new Date(date).getFullYear() === year);
                     }
-
                     if (originalDate) {
                         if (operation === 'subtract') {
                             result[originalDate] = val1 - val2;
-                        } else if (val2 !== 0) {
+                        } else if (operation === 'divide' && val2 !== 0) {
                             result[originalDate] = val1 / val2;
                         }
                     }
                 }
             }
-            processedMetrics[metricId] = result;
+            processedMetrics[mc.id] = result;
         }
-    };
-
-    calculateCustomMetric('rps', 'annualRevenue / commonSharesOutstanding', 'divide');
-    calculateCustomMetric('fcf', 'operatingCashflow - capitalExpenditures', 'subtract');
-    calculateCustomMetric('fcfPerShare', 'fcf / commonSharesOutstanding', 'divide');
-    calculateCustomMetric('ttmDividends', 'dividendPayout / commonSharesOutstanding', 'divide');
+    });
 
     // Interpolation
     const priceDates = Object.keys(processedMetrics['price'] || {}).sort();
     if (priceDates.length === 0) throw new Error('No price data available for timeframe.');
 
     const interpolatedMetrics = {};
-    const metricsToInterpolate = new Set(metricsConfig.filter(m => m.is_plottable || ['ttmEps', 'rps', 'fcf', 'fcfPerShare'].includes(m.id)).map(m => m.id));
+    const metricsToInterpolate = new Set(metricsConfig.filter(m => m.is_plottable || [
+        'ttmEps', 'rps', 'fcf', 'fcfPerShare', 'operatingCashflowPerShare',
+        'payoutRatioFcf', 'payoutRatioOcf'
+    ].includes(m.id)).map(m => m.id));
     
     for (const metricId in processedMetrics) {
         if (!metricsToInterpolate.has(metricId) || metricId === 'price') {
