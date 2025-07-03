@@ -423,7 +423,7 @@ input[type="range"].timeframe-slider::-moz-range-thumb {
 
 #recipesSankeyChart {
     min-height: 0;
-    height: 400px;
+    height: 500px;
     width: 100%;
     max-width: 100%;
     overflow-x: hidden;
@@ -503,4 +503,11 @@ input[type="range"].timeframe-slider::-moz-range-thumb {
     max-height: 120px;
     min-height: 40px;
     overflow-y: auto;
+}
+
+#dividendGrowthAttributionDebugPanel {
+    min-height: 40px;
+    max-height: 120px;
+    overflow-y: auto;
+    display: none;
 }

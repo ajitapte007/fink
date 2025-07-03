@@ -87,6 +87,18 @@ function debugLogGrowthAttribution(msg) {
     debugPanel.scrollTop = debugPanel.scrollHeight;
 }
 
+function debugLogDividendGrowthAttribution(msg) {
+    const debugPanel = document.getElementById('dividendGrowthAttributionDebugPanel');
+    if (!debugPanel) return;
+    debugPanel.style.display = 'block';
+    debugPanel.style.visibility = 'visible';
+    debugPanel.style.height = 'auto';
+    const p = document.createElement('div');
+    p.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+    debugPanel.appendChild(p);
+    debugPanel.scrollTop = debugPanel.scrollHeight;
+}
+
 function fetchTabData(tab) {
     debugLog(`fetchTabData called for tab: ${tab}`);
     const ticker = getCurrentTicker();
@@ -186,12 +198,18 @@ window.addEventListener('DOMContentLoaded', () => {
         const growthAttributionChartContainer = document.getElementById('growthAttributionChartContainer');
         const recipesSankeyChart = document.getElementById('recipesSankeyChart');
         const growthAttributionDebugPanel = document.getElementById('growthAttributionDebugPanel');
+        const dividendGrowthSliderContainer = document.getElementById('dividendGrowthAttributionSliderContainer');
+        const dividendGrowthAttributionChartContainer = document.getElementById('dividendGrowthAttributionChartContainer');
+        const dividendGrowthAttributionDebugPanel = document.getElementById('dividendGrowthAttributionDebugPanel');
         if (selected && selected.value === 'growthAttribution') {
             growthSliderContainer.style.display = '';
             cashflowOverviewContainer.style.display = 'none';
             growthAttributionChartContainer.style.display = '';
             recipesSankeyChart.style.display = 'none';
             growthAttributionDebugPanel.style.display = '';
+            dividendGrowthSliderContainer.style.display = 'none';
+            dividendGrowthAttributionChartContainer.style.display = 'none';
+            dividendGrowthAttributionDebugPanel.style.display = 'none';
             await renderGrowthAttributionRecipe();
         } else if (selected && selected.value === 'cashflowOverview') {
             cashflowOverviewContainer.style.display = '';
@@ -199,15 +217,34 @@ window.addEventListener('DOMContentLoaded', () => {
             growthAttributionChartContainer.style.display = 'none';
             recipesSankeyChart.style.display = '';
             growthAttributionDebugPanel.style.display = 'none';
+            dividendGrowthSliderContainer.style.display = 'none';
+            dividendGrowthAttributionChartContainer.style.display = 'none';
+            dividendGrowthAttributionDebugPanel.style.display = 'none';
             await renderCashflowOverviewRecipe();
+        } else if (selected && selected.value === 'dividendGrowthAttribution') {
+            dividendGrowthSliderContainer.style.display = '';
+            cashflowOverviewContainer.style.display = 'none';
+            growthSliderContainer.style.display = 'none';
+            growthAttributionChartContainer.style.display = 'none';
+            recipesSankeyChart.style.display = 'none';
+            growthAttributionDebugPanel.style.display = 'none';
+            dividendGrowthAttributionChartContainer.style.display = '';
+            dividendGrowthAttributionDebugPanel.style.display = '';
+            await renderDividendGrowthAttributionRecipe();
         } else {
             growthSliderContainer.style.display = 'none';
             cashflowOverviewContainer.style.display = 'none';
             growthAttributionChartContainer.style.display = 'none';
             recipesSankeyChart.style.display = 'none';
             growthAttributionDebugPanel.style.display = 'none';
+            dividendGrowthSliderContainer.style.display = 'none';
+            dividendGrowthAttributionChartContainer.style.display = 'none';
+            dividendGrowthAttributionDebugPanel.style.display = 'none';
             if (window.growthAttributionChart && typeof window.growthAttributionChart.destroy === 'function') {
                 window.growthAttributionChart.destroy();
+            }
+            if (window.dividendGrowthAttributionChart && typeof window.dividendGrowthAttributionChart.destroy === 'function') {
+                window.dividendGrowthAttributionChart.destroy();
             }
         }
         if (!selected) return;
@@ -496,6 +533,177 @@ window.addEventListener('DOMContentLoaded', () => {
             const chartContainer = document.getElementById('growthAttributionChartContainer');
             chartContainer.innerHTML = '';
             debugLogGrowthAttribution(`Error: ${err.message}`);
+        }
+    }
+
+    async function renderDividendGrowthAttributionRecipe() {
+        debugLogDividendGrowthAttribution('TEST: renderDividendGrowthAttributionRecipe called');
+        const leftSlider = document.getElementById('dividendGrowthLeftSlider');
+        const rightSlider = document.getElementById('dividendGrowthRightSlider');
+        const sliderContainer = document.getElementById('dividendGrowthAttributionSliderContainer');
+        debugLogDividendGrowthAttribution('dividendGrowthLeftSlider: ' + (leftSlider ? 'found' : 'NOT FOUND'));
+        debugLogDividendGrowthAttribution('dividendGrowthRightSlider: ' + (rightSlider ? 'found' : 'NOT FOUND'));
+        debugLogDividendGrowthAttribution('dividendGrowthAttributionSliderContainer: ' + (sliderContainer ? 'found' : 'NOT FOUND'));
+        debugLogDividendGrowthAttribution('dividendGrowthAttributionSliderContainer display: ' + (sliderContainer ? sliderContainer.style.display : 'N/A'));
+        const ticker = getCurrentTicker();
+        const apiKey = getCurrentApiKey();
+        debugLogDividendGrowthAttribution(`Ticker: ${ticker}, API Key: ${apiKey ? '[provided]' : '[missing]'}`);
+        if (!ticker || !apiKey) {
+            debugLogDividendGrowthAttribution('Missing ticker or API key.');
+            return;
+        }
+        // Use the main metricsConfig for all metrics
+        const selectedMetricIds = ['ttmDividends', 'dividendYieldTTM', 'payoutRatioFcf', 'annualEPS', 'rps'];
+        try {
+            const now = new Date();
+            const startDate = new Date(now.getFullYear() - 20, now.getMonth(), now.getDate());
+            const endDate = now;
+            const { rawData, fxRateUsed } = await fetchFinancialData(ticker, apiKey, startDate, endDate, metricsConfig);
+            const processedMetrics = processFinancialData(rawData, fxRateUsed, startDate, endDate, metricsConfig);
+            // 1. Extract annual {date, value} arrays for each metric
+            const annualSeries = {};
+            selectedMetricIds.forEach(id => {
+                let arr = processedMetrics[id];
+                if (!arr) arr = [];
+                if (!Array.isArray(arr)) {
+                    arr = Object.entries(arr).map(([date, value]) => ({ date, value }));
+                }
+                // Only keep annual dates (YYYY-MM-DD with MM and DD = 12-31 or similar)
+                arr = arr.filter(pt => pt.date && pt.date.length >= 4);
+                annualSeries[id] = arr;
+            });
+            // 2. Build the union of all annual dates
+            const allDatesSet = new Set();
+            Object.values(annualSeries).forEach(arr => arr.forEach(pt => allDatesSet.add(pt.date)));
+            const allDates = Array.from(allDatesSet).sort();
+            // 3. Align each series to allDates (do NOT normalize here)
+            const aligned = {};
+            selectedMetricIds.forEach(id => {
+                aligned[id] = interpolateData(annualSeries[id], allDates);
+            });
+            // Debug: log aligned data for each metric
+            selectedMetricIds.forEach(id => {
+                debugLogDividendGrowthAttribution(`Aligned annual data for ${id}: ${JSON.stringify(aligned[id])}`);
+            });
+            // 4. Initialize slider for annual range
+            const sliderTrack = document.querySelector('#dividendGrowthAttributionSliderContainer .slider-track');
+            const yearRangeLabel = document.getElementById('dividend-growth-year-range-label');
+            leftSlider.min = 0;
+            leftSlider.max = allDates.length - 1;
+            leftSlider.value = 0; // oldest year
+            rightSlider.min = 0;
+            rightSlider.max = allDates.length - 1;
+            rightSlider.value = allDates.length - 1; // most recent year
+            function updateDividendGrowthAttributionSliderAppearance() {
+                if (!allDates || !allDates.length) return;
+                const min = parseInt(leftSlider.min);
+                const max = parseInt(rightSlider.max);
+                let leftValue = parseInt(leftSlider.value);
+                let rightValue = parseInt(rightSlider.value);
+                let startIdx = Math.min(leftValue, rightValue);
+                let endIdx = Math.max(leftValue, rightValue);
+                const leftPercent = ((startIdx - min) / (max - min)) * 100;
+                const rightPercent = ((endIdx - min) / (max - min)) * 100;
+                sliderTrack.style.background = `linear-gradient(to right, #e2e8f0 ${leftPercent}%, #3b82f6 ${leftPercent}%, #3b82f6 ${rightPercent}%, #e2e8f0 ${rightPercent}%)`;
+                // Use actual years from the data
+                const startYear = allDates[startIdx]?.slice(0, 4);
+                const endYear = allDates[endIdx]?.slice(0, 4);
+                yearRangeLabel.textContent = `Start: ${startYear} | End: ${endYear}`;
+            }
+            leftSlider.addEventListener('input', updateDividendGrowthAttributionSliderAppearance);
+            rightSlider.addEventListener('input', updateDividendGrowthAttributionSliderAppearance);
+            updateDividendGrowthAttributionSliderAppearance();
+            // 5. Chart update on slider change
+            function updateDividendGrowthAttributionChart() {
+                let leftValue = parseInt(leftSlider.value);
+                let rightValue = parseInt(rightSlider.value);
+                let startIdx = Math.min(leftValue, rightValue);
+                let endIdx = Math.max(leftValue, rightValue);
+                const slicedDates = allDates.slice(startIdx, endIdx + 1);
+                const datasets = selectedMetricIds.map((id, i) => {
+                    const colorArr = [
+                        'rgb(255, 159, 64)', // ttmDividends
+                        'rgb(40, 167, 69)',  // dividendYieldTTM
+                        'rgb(255, 99, 132)', // payoutRatioFcf
+                        'rgb(75, 192, 192)', // annualEPS
+                        'rgb(54, 162, 235)'  // rps
+                    ];
+                    const labelArr = [
+                        'Dividends Per Share (TTM)',
+                        'Dividend Yield (TTM)',
+                        'Payout Ratio (FCF)',
+                        'EPS (Annual)',
+                        'Revenue Per Share'
+                    ];
+                    // Slice the aligned data to the selected range
+                    const fullSeries = aligned[id] || [];
+                    const sliced = fullSeries.slice(startIdx, endIdx + 1);
+                    // Normalize the sliced data to its first non-null value
+                    const normalizedSliced = toPercentOfStartValue(sliced);
+                    debugLogDividendGrowthAttribution(`Normalized (slider) data for ${id}: ${JSON.stringify(normalizedSliced)}`);
+                    return {
+                        label: labelArr[i],
+                        data: normalizedSliced.map(pt => pt.value),
+                        borderColor: colorArr[i],
+                        fill: false,
+                        yAxisID: 'y-percentage',
+                        spanGaps: true
+                    };
+                });
+                const chartContainer = document.getElementById('dividendGrowthAttributionChartContainer');
+                chartContainer.innerHTML = '<canvas id="dividendGrowthAttributionChart"></canvas>';
+                const ctx = document.getElementById('dividendGrowthAttributionChart').getContext('2d');
+                if (window.dividendGrowthAttributionChart && typeof window.dividendGrowthAttributionChart.destroy === 'function') {
+                    window.dividendGrowthAttributionChart.destroy();
+                }
+                window.dividendGrowthAttributionChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: slicedDates,
+                        datasets: datasets
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: 'Dividend Growth Attribution (All metrics as % of start value)'
+                            },
+                            legend: { position: 'top' },
+                            tooltip: {
+                                mode: 'index',
+                                intersect: false,
+                                callbacks: {
+                                    label: function(context) {
+                                        let label = context.dataset.label || '';
+                                        let value = context.parsed.y;
+                                        if (value === null) return `${label}: N/A`;
+                                        return `${label}: ${value.toFixed(2)}%`;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: { title: { display: true, text: 'Date' } },
+                            'y-percentage': {
+                                title: { display: true, text: '% of Start Value' },
+                                ticks: {
+                                    callback: function(value) { return value + '%'; }
+                                }
+                            }
+                        },
+                        interaction: { mode: 'index', intersect: false },
+                        elements: { point: { radius: 2, hoverRadius: 5 } }
+                    }
+                });
+            }
+            leftSlider.addEventListener('change', updateDividendGrowthAttributionChart);
+            rightSlider.addEventListener('change', updateDividendGrowthAttributionChart);
+            updateDividendGrowthAttributionChart();
+        } catch (err) {
+            const chartContainer = document.getElementById('dividendGrowthAttributionChartContainer');
+            chartContainer.innerHTML = '';
+            debugLogDividendGrowthAttribution(`Error: ${err.message}`);
         }
     }
 

@@ -152,6 +152,10 @@
                             <input type="radio" id="recipeGrowthAttribution" name="recipeSelect" value="growthAttribution">
                             <label for="recipeGrowthAttribution">Growth attribution</label>
                         </div>
+                        <div class="radio-item">
+                            <input type="radio" id="recipeDividendGrowthAttribution" name="recipeSelect" value="dividendGrowthAttribution">
+                            <label for="recipeDividendGrowthAttribution">Dividend Growth Attribution</label>
+                        </div>
                         <!-- Add more recipes here in the future -->
                     </div>
                 </div>
@@ -178,6 +182,17 @@
                 </div>
                 <div id="growthAttributionChartContainer"></div>
                 <div id="growthAttributionDebugPanel" class="w-full mt-4 p-3 bg-gray-100 border border-gray-300 rounded-lg text-xs font-mono"></div>
+                <!-- Dividend Growth Attribution Year Range Slider (hidden by default) -->
+                <div id="dividendGrowthAttributionSliderContainer" class="timeframe-slider-container mb-4" style="display: none;">
+                    <div class="slider-labels">
+                        <span id="dividend-growth-year-range-label">20 years ago - Today</span>
+                    </div>
+                    <div class="slider-track"></div>
+                    <input type="range" id="dividendGrowthLeftSlider" class="timeframe-slider" min="0" max="20" value="0" step="1">
+                    <input type="range" id="dividendGrowthRightSlider" class="timeframe-slider" min="0" max="20" value="20" step="1">
+                </div>
+                <div id="dividendGrowthAttributionChartContainer"></div>
+                <div id="dividendGrowthAttributionDebugPanel" class="w-full mt-4 p-3 bg-gray-100 border border-gray-300 rounded-lg text-xs font-mono"></div>
             </div>
         </div>
     </div>
