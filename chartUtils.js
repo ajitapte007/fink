@@ -91,7 +91,6 @@ export function renderQuickChartImage(containerId, chartUrl) {
     container.innerHTML = '';
     const img = document.createElement('img');
     img.src = chartUrl;
-    img.alt = 'Sankey Diagram';
     img.style.maxWidth = '100%';
     img.style.minHeight = '400px';
     container.appendChild(img);

@@ -286,7 +286,6 @@ window.addEventListener('DOMContentLoaded', () => {
                 0, // endYearAgo (latest)
                 metricsConfig
             );
-            debugLogRecipes('Full rawData: ' + JSON.stringify(rawData, null, 2));
             debugLogRecipes('Data fetched. Preparing chart...');
             // Extract available years from annualReports (INCOME_STATEMENT)
             const annualReports = rawData['INCOME_STATEMENT']?.annualReports || [];
@@ -326,31 +325,43 @@ window.addEventListener('DOMContentLoaded', () => {
                 const sga = Number(income.sellingGeneralAndAdministrative ?? 0) * fxRateUsed;
                 const rnd = Number(income.researchAndDevelopment ?? 0) * fxRateUsed;
                 const operatingCashflow = Number(cashflow.operatingCashflow ?? 0) * fxRateUsed;
+                const dividendPayout = Number(cashflow.dividendPayout ?? 0) * fxRateUsed;
+                const proceedsFromRepurchaseOfEquity = Math.abs(Number(cashflow.proceedsFromRepurchaseOfEquity ?? 0) * fxRateUsed);
                 const other2 = operatingExpenses - sga - rnd;
+                const freeCashFlow = operatingCashflow - capitalExpenditures;
+                // Helper to safely sum values (treat null/undefined/NaN as 0)
+                const safe = v => (isNaN(v) || v == null ? 0 : v);
+                const totalRevenueValue = safe(totalRevenue);
                 // Build nodes and links for Plotly multi-level Sankey, with formatted values
                 const nodes = [
-                    `Total Revenue ($${formatLargeNumber(totalRevenue)})`,           // 0
-                    `Cost of Revenue ($${formatLargeNumber(costOfRevenue)})`,      // 1
-                    `Operating Expenses ($${formatLargeNumber(operatingExpenses)})`, // 2
-                    `Capital Expenditures ($${formatLargeNumber(capitalExpenditures)})`, // 3
-                    `Operating Cashflow ($${formatLargeNumber(operatingCashflow)})`, // 4
-                    `SG&A ($${formatLargeNumber(sga)})`,                             // 5
-                    `R&D ($${formatLargeNumber(rnd)})`,                              // 6
-                    `Other OpEx ($${formatLargeNumber(other2)})`                     // 7
+                    `Total Revenue ($${formatLargeNumber(safe(totalRevenue))})`,                       // 0
+                    `Cost of Revenue ($${formatLargeNumber(safe(costOfRevenue))})`,                   // 1
+                    `Operating Expenses ($${formatLargeNumber(safe(operatingExpenses))})`,            // 2
+                    `Operating Cashflow ($${formatLargeNumber(safe(operatingCashflow))})`,            // 3
+                    `Capital Expenditures ($${formatLargeNumber(safe(capitalExpenditures))})`,        // 4
+                    `Free Cash Flow ($${formatLargeNumber(safe(freeCashFlow))})`,                     // 5
+                    `Dividend Payout ($${formatLargeNumber(safe(dividendPayout))})`,                  // 6
+                    `Repurchase of Equity ($${formatLargeNumber(safe(proceedsFromRepurchaseOfEquity))})`, // 7
+                    `SG&A ($${formatLargeNumber(safe(sga))})`,                                        // 8
+                    `R&D ($${formatLargeNumber(safe(rnd))})`,                                         // 9
+                    `Other OpEx ($${formatLargeNumber(safe(other2))})`                                // 10
                 ];
                 const links = [
-                    // totalRevenue splits
-                    { source: 0, target: 1, value: costOfRevenue },
-                    { source: 0, target: 2, value: operatingExpenses },
-                    { source: 0, target: 3, value: capitalExpenditures },
-                    { source: 0, target: 4, value: operatingCashflow },
+                    // Total Revenue splits
+                    { source: 0, target: 1, value: safe(costOfRevenue) },
+                    { source: 0, target: 2, value: safe(operatingExpenses) },
+                    { source: 0, target: 3, value: safe(operatingCashflow) },
                     // operatingExpenses splits
-                    { source: 2, target: 5, value: sga },
-                    { source: 2, target: 6, value: rnd },
-                    { source: 2, target: 7, value: other2 }
+                    { source: 2, target: 8, value: safe(sga) },
+                    { source: 2, target: 9, value: safe(rnd) },
+                    { source: 2, target: 10, value: safe(other2) },
+                    // operatingCashflow splits
+                    { source: 3, target: 4, value: safe(capitalExpenditures) },
+                    { source: 3, target: 5, value: safe(freeCashFlow) },
+                    // freeCashFlow splits
+                    { source: 5, target: 6, value: safe(dividendPayout) },
+                    { source: 5, target: 7, value: safe(proceedsFromRepurchaseOfEquity) }
                 ];
-                debugLogRecipes(`Sankey nodes: ${JSON.stringify(nodes)}`);
-                debugLogRecipes(`Sankey links: ${JSON.stringify(links)}`);
                 renderPlotlySankeyChartMultiLevel('recipesSankeyChart', nodes, links);
             }
             // Initial render (most recent year)
@@ -410,10 +421,6 @@ window.addEventListener('DOMContentLoaded', () => {
             selectedMetricIds.forEach(id => {
                 aligned[id] = interpolateData(annualSeries[id], allDates);
             });
-            // Debug: log aligned data for each metric
-            selectedMetricIds.forEach(id => {
-                debugLogGrowthAttribution(`Aligned annual data for ${id}: ${JSON.stringify(aligned[id])}`);
-            });
             // 4. Initialize slider for annual range
             const sliderTrack = document.querySelector('#growthAttributionSliderContainer .slider-track');
             const yearRangeLabel = document.getElementById('growth-year-range-label');
@@ -469,7 +476,6 @@ window.addEventListener('DOMContentLoaded', () => {
                     const sliced = fullSeries.slice(startIdx, endIdx + 1);
                     // Normalize the sliced data to its first non-null value
                     const normalizedSliced = toPercentOfStartValue(sliced);
-                    debugLogGrowthAttribution(`Normalized (slider) data for ${id}: ${JSON.stringify(normalizedSliced)}`);
                     return {
                         label: labelArr[i],
                         data: normalizedSliced.map(pt => pt.value),
@@ -581,10 +587,6 @@ window.addEventListener('DOMContentLoaded', () => {
             selectedMetricIds.forEach(id => {
                 aligned[id] = interpolateData(annualSeries[id], allDates);
             });
-            // Debug: log aligned data for each metric
-            selectedMetricIds.forEach(id => {
-                debugLogDividendGrowthAttribution(`Aligned annual data for ${id}: ${JSON.stringify(aligned[id])}`);
-            });
             // 4. Initialize slider for annual range
             const sliderTrack = document.querySelector('#dividendGrowthAttributionSliderContainer .slider-track');
             const yearRangeLabel = document.getElementById('dividend-growth-year-range-label');
@@ -640,7 +642,6 @@ window.addEventListener('DOMContentLoaded', () => {
                     const sliced = fullSeries.slice(startIdx, endIdx + 1);
                     // Normalize the sliced data to its first non-null value
                     const normalizedSliced = toPercentOfStartValue(sliced);
-                    debugLogDividendGrowthAttribution(`Normalized (slider) data for ${id}: ${JSON.stringify(normalizedSliced)}`);
                     return {
                         label: labelArr[i],
                         data: normalizedSliced.map(pt => pt.value),
