@@ -1,4 +1,4 @@
-import { roundDateToEndOfMonth, getNestedValue, calculateTTM, interpolateData, processFinancialData } from './processUtils.js';
+import { roundDateToEndOfMonth, getNestedValue, calculateTTM, interpolateData, processFinancialData, toPercentOfStartValue } from './processUtils.js';
 
 describe('roundDateToEndOfMonth', () => {
     test('should round a mid-month date to the end of that month', () => {
@@ -346,5 +346,50 @@ describe('processFinancialData', () => {
         expect(processed.payoutRatioFcf[0].value).toBeCloseTo((200 * 1.1) / ((1000 * 1.1) - (300 * 1.1)));
         // Payout Ratio (OCF)
         expect(processed.payoutRatioOcf[0].value).toBeCloseTo((200 * 1.1) / (1000 * 1.1));
+    });
+});
+
+describe('toPercentOfStartValue', () => {
+    it('returns correct percentages for normal series', () => {
+        const input = [
+            {date: '2020-01-01', value: 10},
+            {date: '2020-02-01', value: 15},
+            {date: '2020-03-01', value: 20}
+        ];
+        const output = toPercentOfStartValue(input);
+        expect(output.map(pt => pt.value)).toEqual([100, 150, 200]);
+    });
+    it('handles zero start value', () => {
+        const input = [
+            {date: '2020-01-01', value: 0},
+            {date: '2020-02-01', value: 10}
+        ];
+        const output = toPercentOfStartValue(input);
+        expect(output.map(pt => pt.value)).toEqual([null, null]);
+    });
+    it('handles missing/null/NaN start value', () => {
+        const input = [
+            {date: '2020-01-01', value: null},
+            {date: '2020-02-01', value: 5},
+            {date: '2020-03-01', value: 10}
+        ];
+        const output = toPercentOfStartValue(input);
+        expect(output.map(pt => pt.value)).toEqual([null, 100, 200]);
+    });
+    it('handles all-null series', () => {
+        const input = [
+            {date: '2020-01-01', value: null},
+            {date: '2020-02-01', value: null}
+        ];
+        const output = toPercentOfStartValue(input);
+        expect(output.map(pt => pt.value)).toEqual([null, null]);
+    });
+    it('handles negative start value', () => {
+        const input = [
+            {date: '2020-01-01', value: -10},
+            {date: '2020-02-01', value: -20}
+        ];
+        const output = toPercentOfStartValue(input);
+        expect(output.map(pt => pt.value)).toEqual([100, 200]);
     });
 }); 

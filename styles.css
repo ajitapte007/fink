@@ -469,3 +469,38 @@ input[type="range"].timeframe-slider::-moz-range-thumb {
     font-weight: 600;
     color: #1d4ed8;
 }
+
+/* Custom width utility for range sliders */
+.w-4\/5 {
+    width: 80%;
+}
+
+/* Custom slider track and thumb styles for double-sided slider */
+.slider-track-custom {
+    z-index: 0;
+    transform: translateY(-50%);
+}
+.slider-thumb-custom {
+    z-index: 2;
+    pointer-events: auto;
+    background: transparent;
+}
+.slider-thumb-custom-top {
+    z-index: 3;
+    pointer-events: auto;
+    background: transparent;
+}
+.slider-container-custom {
+    height: 40px;
+}
+
+/* Ensure recipes-slider-container is always full width */
+.recipes-slider-container {
+    width: 100%;
+}
+
+#growthAttributionDebugPanel {
+    max-height: 120px;
+    min-height: 40px;
+    overflow-y: auto;
+}

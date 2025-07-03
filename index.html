@@ -148,18 +148,36 @@
                             <input type="radio" id="recipeCashflowOverview" name="recipeSelect" value="cashflowOverview" checked>
                             <label for="recipeCashflowOverview">Cashflow Overview</label>
                         </div>
+                        <div class="radio-item">
+                            <input type="radio" id="recipeGrowthAttribution" name="recipeSelect" value="growthAttribution">
+                            <label for="recipeGrowthAttribution">Growth attribution</label>
+                        </div>
                         <!-- Add more recipes here in the future -->
                     </div>
                 </div>
             </div>
             <!-- Right Panel for Chart -->
             <div class="panel right-panel">
-                <div class="recipes-slider-container mt-4 mb-2 flex flex-col items-center">
-                    <label for="recipesYearSlider" id="recipesYearLabel" class="block text-sm font-medium text-gray-700 mb-1">Year: <span id="recipesYearValue"></span></label>
-                    <input type="range" id="recipesYearSlider" class="recipes-year-slider" min="0" max="0" value="0" step="1" style="width: 80%;">
+                <!-- Cashflow Overview Container -->
+                <div id="cashflowOverviewContainer">
+                    <div class="recipes-slider-container mt-4 mb-2 flex flex-col items-center">
+                        <label for="recipesYearSlider" id="recipesYearLabel" class="block text-sm font-medium text-gray-700 mb-1">Year: <span id="recipesYearValue"></span></label>
+                        <input type="range" id="recipesYearSlider" class="recipes-year-slider" min="0" max="0" value="0" step="1" style="width: 80%;">
+                    </div>
+                    <div id="recipesSankeyChart"></div>
+                    <div id="recipesDebugPanel" class="w-full mt-4 p-3 bg-gray-100 border border-gray-300 rounded-lg text-xs font-mono"></div>
                 </div>
-                <div id="recipesSankeyChart"></div>
-                <div id="recipesDebugPanel" class="w-full mt-4 p-3 bg-gray-100 border border-gray-300 rounded-lg text-xs font-mono"></div>
+                <!-- Growth Attribution Year Range Slider (hidden by default) -->
+                <div id="growthAttributionSliderContainer" class="timeframe-slider-container mb-4" style="display: none;">
+                    <div class="slider-labels">
+                        <span id="growth-year-range-label">20 years ago - Today</span>
+                    </div>
+                    <div class="slider-track"></div>
+                    <input type="range" id="growthLeftSlider" class="timeframe-slider" min="0" max="20" value="0" step="1">
+                    <input type="range" id="growthRightSlider" class="timeframe-slider" min="0" max="20" value="20" step="1">
+                </div>
+                <div id="growthAttributionChartContainer"></div>
+                <div id="growthAttributionDebugPanel" class="w-full mt-4 p-3 bg-gray-100 border border-gray-300 rounded-lg text-xs font-mono"></div>
             </div>
         </div>
     </div>

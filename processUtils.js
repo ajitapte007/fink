@@ -291,4 +291,27 @@ export function formatLargeNumber(value) {
     } else {
         return value.toLocaleString();
     }
+}
+
+/**
+ * Converts a time series to percentage of its first non-null value.
+ * Returns array of {date, value} where value is (current/start)*100 or null if not computable.
+ */
+export function toPercentOfStartValue(timeSeries) {
+    if (!Array.isArray(timeSeries) || timeSeries.length === 0) return [];
+    // Find first non-null, non-NaN, non-zero value
+    let startIdx = 0;
+    while (startIdx < timeSeries.length && (timeSeries[startIdx].value === null || isNaN(timeSeries[startIdx].value))) {
+        startIdx++;
+    }
+    if (startIdx === timeSeries.length) return timeSeries.map(pt => ({...pt, value: null}));
+    const startValue = timeSeries[startIdx].value;
+    if (startValue === 0 || startValue === null || isNaN(startValue)) {
+        // Avoid division by zero or nonsense
+        return timeSeries.map(pt => ({...pt, value: null}));
+    }
+    return timeSeries.map(pt => {
+        if (pt.value === null || isNaN(pt.value)) return {...pt, value: null};
+        return {...pt, value: (pt.value / startValue) * 100};
+    });
 } 
