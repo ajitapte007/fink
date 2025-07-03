@@ -50,67 +50,14 @@ function showTab(tab) {
     document.getElementById('tab-' + tab).style.display = 'block';
 }
 
-// Debug panel utility
-export function debugLog(msg) {
-    const debugPanel = document.getElementById('debugPanel');
-    if (!debugPanel) return;
-    debugPanel.style.display = 'block';
-    const p = document.createElement('div');
-    p.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
-    debugPanel.appendChild(p);
-    debugPanel.scrollTop = debugPanel.scrollHeight;
-}
-window.debugLog = debugLog;
-
-// Debug panel utility for Recipes tab
-function debugLogRecipes(msg) {
-    const debugPanel = document.getElementById('recipesDebugPanel');
-    if (!debugPanel) return;
-    debugPanel.style.display = 'block';
-    debugPanel.style.visibility = 'visible';
-    debugPanel.style.height = 'auto';
-    const p = document.createElement('div');
-    p.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
-    debugPanel.appendChild(p);
-    debugPanel.scrollTop = debugPanel.scrollHeight;
-}
-
-function debugLogGrowthAttribution(msg) {
-    const debugPanel = document.getElementById('growthAttributionDebugPanel');
-    if (!debugPanel) return;
-    debugPanel.style.display = 'block';
-    debugPanel.style.visibility = 'visible';
-    debugPanel.style.height = 'auto';
-    const p = document.createElement('div');
-    p.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
-    debugPanel.appendChild(p);
-    debugPanel.scrollTop = debugPanel.scrollHeight;
-}
-
-function debugLogDividendGrowthAttribution(msg) {
-    const debugPanel = document.getElementById('dividendGrowthAttributionDebugPanel');
-    if (!debugPanel) return;
-    debugPanel.style.display = 'block';
-    debugPanel.style.visibility = 'visible';
-    debugPanel.style.height = 'auto';
-    const p = document.createElement('div');
-    p.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
-    debugPanel.appendChild(p);
-    debugPanel.scrollTop = debugPanel.scrollHeight;
-}
-
 function fetchTabData(tab) {
-    debugLog(`fetchTabData called for tab: ${tab}`);
     const ticker = getCurrentTicker();
     const apiKey = getCurrentApiKey();
-    debugLog(`Ticker: ${ticker}, API Key: ${apiKey ? '[provided]' : '[missing]'}`);
     if (!ticker || !apiKey) return;
     if (tab === 'raw' && !loadedTabs.raw) {
-        debugLog('Calling plotData for raw tab...');
         plotData(ticker, apiKey);
         loadedTabs.raw = true;
     } else if (tab === 'recipes' && !loadedTabs.recipes) {
-        debugLog('Recipes tab selected (no-op for now).');
         loadedTabs.recipes = true;
     }
 }
@@ -191,64 +138,29 @@ window.addEventListener('DOMContentLoaded', () => {
 
     async function handleRecipeChange() {
         const selected = document.querySelector('input[name="recipeSelect"]:checked');
-        debugLogRecipes(`Recipe selected: ${selected?.value}`);
-        // Show/hide the correct container for each recipe
-        const growthSliderContainer = document.getElementById('growthAttributionSliderContainer');
-        const cashflowOverviewContainer = document.getElementById('cashflowOverviewContainer');
-        const growthAttributionChartContainer = document.getElementById('growthAttributionChartContainer');
-        const recipesSankeyChart = document.getElementById('recipesSankeyChart');
-        const growthAttributionDebugPanel = document.getElementById('growthAttributionDebugPanel');
-        const dividendGrowthSliderContainer = document.getElementById('dividendGrowthAttributionSliderContainer');
-        const dividendGrowthAttributionChartContainer = document.getElementById('dividendGrowthAttributionChartContainer');
-        const dividendGrowthAttributionDebugPanel = document.getElementById('dividendGrowthAttributionDebugPanel');
+        const cashflowOverviewPanel = document.getElementById('cashflowOverviewPanel');
+        const growthAttributionPanel = document.getElementById('growthAttributionPanel');
+        const dividendGrowthAttributionPanel = document.getElementById('dividendGrowthAttributionPanel');
         if (selected && selected.value === 'growthAttribution') {
-            growthSliderContainer.style.display = '';
-            cashflowOverviewContainer.style.display = 'none';
-            growthAttributionChartContainer.style.display = '';
-            recipesSankeyChart.style.display = 'none';
-            growthAttributionDebugPanel.style.display = '';
-            dividendGrowthSliderContainer.style.display = 'none';
-            dividendGrowthAttributionChartContainer.style.display = 'none';
-            dividendGrowthAttributionDebugPanel.style.display = 'none';
+            cashflowOverviewPanel.style.display = 'none';
+            growthAttributionPanel.style.display = '';
+            dividendGrowthAttributionPanel.style.display = 'none';
             await renderGrowthAttributionRecipe();
         } else if (selected && selected.value === 'cashflowOverview') {
-            cashflowOverviewContainer.style.display = '';
-            growthSliderContainer.style.display = 'none';
-            growthAttributionChartContainer.style.display = 'none';
-            recipesSankeyChart.style.display = '';
-            growthAttributionDebugPanel.style.display = 'none';
-            dividendGrowthSliderContainer.style.display = 'none';
-            dividendGrowthAttributionChartContainer.style.display = 'none';
-            dividendGrowthAttributionDebugPanel.style.display = 'none';
+            cashflowOverviewPanel.style.display = '';
+            growthAttributionPanel.style.display = 'none';
+            dividendGrowthAttributionPanel.style.display = 'none';
             await renderCashflowOverviewRecipe();
         } else if (selected && selected.value === 'dividendGrowthAttribution') {
-            dividendGrowthSliderContainer.style.display = '';
-            cashflowOverviewContainer.style.display = 'none';
-            growthSliderContainer.style.display = 'none';
-            growthAttributionChartContainer.style.display = 'none';
-            recipesSankeyChart.style.display = 'none';
-            growthAttributionDebugPanel.style.display = 'none';
-            dividendGrowthAttributionChartContainer.style.display = '';
-            dividendGrowthAttributionDebugPanel.style.display = '';
+            cashflowOverviewPanel.style.display = 'none';
+            growthAttributionPanel.style.display = 'none';
+            dividendGrowthAttributionPanel.style.display = '';
             await renderDividendGrowthAttributionRecipe();
         } else {
-            growthSliderContainer.style.display = 'none';
-            cashflowOverviewContainer.style.display = 'none';
-            growthAttributionChartContainer.style.display = 'none';
-            recipesSankeyChart.style.display = 'none';
-            growthAttributionDebugPanel.style.display = 'none';
-            dividendGrowthSliderContainer.style.display = 'none';
-            dividendGrowthAttributionChartContainer.style.display = 'none';
-            dividendGrowthAttributionDebugPanel.style.display = 'none';
-            if (window.growthAttributionChart && typeof window.growthAttributionChart.destroy === 'function') {
-                window.growthAttributionChart.destroy();
-            }
-            if (window.dividendGrowthAttributionChart && typeof window.dividendGrowthAttributionChart.destroy === 'function') {
-                window.dividendGrowthAttributionChart.destroy();
-            }
+            cashflowOverviewPanel.style.display = 'none';
+            growthAttributionPanel.style.display = 'none';
+            dividendGrowthAttributionPanel.style.display = 'none';
         }
-        if (!selected) return;
-        // Future: handle other recipes
     }
 
     // Store full aligned data and years for slider
@@ -259,10 +171,8 @@ window.addEventListener('DOMContentLoaded', () => {
     async function renderCashflowOverviewRecipe() {
         const ticker = getCurrentTicker();
         const apiKey = getCurrentApiKey();
-        debugLogRecipes(`Ticker: ${ticker}, API Key: ${apiKey ? '[provided]' : '[missing]'}`);
         if (!ticker || !apiKey) {
             renderQuickChartImage('recipesSankeyChart', '');
-            debugLogRecipes('Missing ticker or API key.');
             return;
         }
         // Fetch all years of data for the Sankey
@@ -276,7 +186,6 @@ window.addEventListener('DOMContentLoaded', () => {
             { metric: 'operatingCashflow', source_function: 'CASH_FLOW' },
             { metric: 'dividendPayout', source_function: 'CASH_FLOW' }
         ];
-        debugLogRecipes('Fetching financial data...');
         try {
             // Fetch all years (20 years ago to now)
             const { rawData, fxRateUsed } = await fetchFinancialData(
@@ -286,7 +195,6 @@ window.addEventListener('DOMContentLoaded', () => {
                 0, // endYearAgo (latest)
                 metricsConfig
             );
-            debugLogRecipes('Data fetched. Preparing chart...');
             // Extract available years from annualReports (INCOME_STATEMENT)
             const annualReports = rawData['INCOME_STATEMENT']?.annualReports || [];
             const cashflowReports = rawData['CASH_FLOW']?.annualReports || [];
@@ -297,7 +205,6 @@ window.addEventListener('DOMContentLoaded', () => {
             ].filter(Boolean))).sort((a, b) => a - b); // Ascending (oldest first)
             if (!years.length) {
                 renderQuickChartImage('recipesSankeyChart', '');
-                debugLogRecipes('No annual data available.');
                 return;
             }
             // Set up the slider (oldest = 0, most recent = max)
@@ -372,24 +279,17 @@ window.addEventListener('DOMContentLoaded', () => {
             };
         } catch (err) {
             renderQuickChartImage('recipesSankeyChart', '');
-            debugLogRecipes(`Error: ${err.message}`);
+            showErrorModal(err.stack || err.message);
         }
     }
 
     async function renderGrowthAttributionRecipe() {
-        debugLogGrowthAttribution('TEST: renderGrowthAttributionRecipe called');
         const leftSlider = document.getElementById('growthLeftSlider');
         const rightSlider = document.getElementById('growthRightSlider');
         const sliderContainer = document.getElementById('growthAttributionSliderContainer');
-        debugLogGrowthAttribution('growthLeftSlider: ' + (leftSlider ? 'found' : 'NOT FOUND'));
-        debugLogGrowthAttribution('growthRightSlider: ' + (rightSlider ? 'found' : 'NOT FOUND'));
-        debugLogGrowthAttribution('growthAttributionSliderContainer: ' + (sliderContainer ? 'found' : 'NOT FOUND'));
-        debugLogGrowthAttribution('growthAttributionSliderContainer display: ' + (sliderContainer ? sliderContainer.style.display : 'N/A'));
         const ticker = getCurrentTicker();
         const apiKey = getCurrentApiKey();
-        debugLogGrowthAttribution(`Ticker: ${ticker}, API Key: ${apiKey ? '[provided]' : '[missing]'}`);
         if (!ticker || !apiKey) {
-            debugLogGrowthAttribution('Missing ticker or API key.');
             return;
         }
         // Use the main metricsConfig for all metrics
@@ -538,24 +438,17 @@ window.addEventListener('DOMContentLoaded', () => {
         } catch (err) {
             const chartContainer = document.getElementById('growthAttributionChartContainer');
             chartContainer.innerHTML = '';
-            debugLogGrowthAttribution(`Error: ${err.message}`);
+            showErrorModal(err.stack || err.message);
         }
     }
 
     async function renderDividendGrowthAttributionRecipe() {
-        debugLogDividendGrowthAttribution('TEST: renderDividendGrowthAttributionRecipe called');
         const leftSlider = document.getElementById('dividendGrowthLeftSlider');
         const rightSlider = document.getElementById('dividendGrowthRightSlider');
         const sliderContainer = document.getElementById('dividendGrowthAttributionSliderContainer');
-        debugLogDividendGrowthAttribution('dividendGrowthLeftSlider: ' + (leftSlider ? 'found' : 'NOT FOUND'));
-        debugLogDividendGrowthAttribution('dividendGrowthRightSlider: ' + (rightSlider ? 'found' : 'NOT FOUND'));
-        debugLogDividendGrowthAttribution('dividendGrowthAttributionSliderContainer: ' + (sliderContainer ? 'found' : 'NOT FOUND'));
-        debugLogDividendGrowthAttribution('dividendGrowthAttributionSliderContainer display: ' + (sliderContainer ? sliderContainer.style.display : 'N/A'));
         const ticker = getCurrentTicker();
         const apiKey = getCurrentApiKey();
-        debugLogDividendGrowthAttribution(`Ticker: ${ticker}, API Key: ${apiKey ? '[provided]' : '[missing]'}`);
         if (!ticker || !apiKey) {
-            debugLogDividendGrowthAttribution('Missing ticker or API key.');
             return;
         }
         // Use the main metricsConfig for all metrics
@@ -704,7 +597,7 @@ window.addEventListener('DOMContentLoaded', () => {
         } catch (err) {
             const chartContainer = document.getElementById('dividendGrowthAttributionChartContainer');
             chartContainer.innerHTML = '';
-            debugLogDividendGrowthAttribution(`Error: ${err.message}`);
+            showErrorModal(err.stack || err.message);
         }
     }
 
@@ -735,19 +628,16 @@ loadBtn.addEventListener('click', function() {
 
 // Update plotData to accept ticker/apiKey as arguments
 async function plotData(ticker, apiKey) {
-    debugLog('Entered plotData');
     showLoadingSpinner();
-    displayMessage('Fetching and processing data... Please wait.', 'info');
+    // displayMessage('Fetching and processing data... Please wait.', 'info');
 
     // Use arguments, not DOM elements
     // Convert slider position to "years ago"
     const startYearAgo = 20 - parseInt(leftSlider.value);
     const endYearAgo = 20 - parseInt(rightSlider.value);
-    debugLog(`Slider years: startYearAgo=${startYearAgo}, endYearAgo=${endYearAgo}`);
 
     if (!ticker || !apiKey) {
-        debugLog('Missing ticker or API key');
-        displayMessage('Ticker and Alpha Vantage API Key are required.', 'error');
+        // displayMessage('Ticker and Alpha Vantage API Key are required.', 'error');
         hideLoadingSpinner();
         return;
     }
@@ -756,28 +646,21 @@ async function plotData(ticker, apiKey) {
         const now = new Date();
         const startDate = new Date(new Date().setFullYear(now.getFullYear() - startYearAgo));
         const endDate = new Date(new Date().setFullYear(now.getFullYear() - endYearAgo));
-        debugLog(`Fetching data for ${ticker} from ${startDate.toISOString()} to ${endDate.toISOString()}`);
         const { rawData, fxRateUsed } = await fetchFinancialData(ticker, apiKey, startDate, endDate, metricsConfig);
-        debugLog('fetchFinancialData returned');
         const processedMetrics = processFinancialData(rawData, fxRateUsed, startDate, endDate, metricsConfig);
-        debugLog('processFinancialData returned');
         const chartData = prepareChartData(processedMetrics, getSelectedMetricsForPlotting(), metricsConfig);
-        debugLog('prepareChartData returned');
         if (chartData) {
             createOrUpdateChart(chartData);
             lastFetchedChartData = { ...chartData, processedMetrics }; // Cache both chart data and processed metrics
-            displayMessage('Chart updated successfully.', 'success');
-            debugLog('Chart created/updated');
+            // displayMessage('Chart updated successfully.', 'success');
         } else {
-            debugLog('No chartData to plot');
+            // displayMessage('No chartData to plot', 'error');
         }
     } catch (error) {
-        debugLog('Error in plotData: ' + error.message);
         console.error("An error occurred during plotting:", error);
-        displayMessage(`An error occurred: ${error.message}`, 'error');
+        // displayMessage(`An error occurred: ${error.message}`, 'error');
     } finally {
         hideLoadingSpinner();
-        debugLog('Spinner hidden');
     }
 }
 
@@ -1056,7 +939,6 @@ export const metricsConfig = [
         is_plottable: false
     }
 ];
-
 
 /**
  * Displays a message to the user with a specific type (success, error, info).
@@ -1362,4 +1244,36 @@ if (typeof window !== 'undefined') {
         // Initial call to set slider appearance
         document.addEventListener('DOMContentLoaded', updateSliderAppearance);
     });
-} 
+}
+
+// Error modal logic
+function showErrorModal(message) {
+    const modal = document.getElementById('errorModal');
+    const msgElem = document.getElementById('errorModalMessage');
+    msgElem.textContent = message;
+    modal.style.display = 'block';
+}
+document.getElementById('closeErrorModal').onclick = function() {
+    document.getElementById('errorModal').style.display = 'none';
+};
+
+// Enhance input panel UX: tab/enter behavior
+// Ticker input: Tab -> API key input, Enter -> Load
+// API key input: Enter -> Load
+
+tickerInputTop.addEventListener('keydown', function(e) {
+    if (e.key === 'Tab' && !e.shiftKey) {
+        e.preventDefault();
+        alphaVantageApiKeyTop.focus();
+    } else if (e.key === 'Enter') {
+        e.preventDefault();
+        loadBtn.click();
+    }
+});
+
+alphaVantageApiKeyTop.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        loadBtn.click();
+    }
+}); 

@@ -22,6 +22,7 @@
         <label for="alphaVantageApiKeyTop"><b><a href="https://www.alphavantage.co/support/#api-key" target="_blank">AlphaVantage API Key</a></b></label>
         <input id="alphaVantageApiKeyTop" type="password" placeholder="API Key" class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 shadow-sm">
         <button id="loadBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-6 rounded-lg shadow-md">Load</button>
+        <div id="loadingSpinner" class="loading-spinner inline-block align-middle ml-2"></div>
     </div>
     <div class="tabs">
         <button class="tab active" data-tab="raw">Raw Metrics</button>
@@ -127,14 +128,11 @@
                     <input type="range" id="leftSlider" class="timeframe-slider" min="0" max="20" value="0" step="1">
                     <input type="range" id="rightSlider" class="timeframe-slider" min="0" max="20" value="20" step="1">
                 </div>
-                <div id="loadingSpinner" class="loading-spinner"></div>
-                <p id="message" class="message w-full hidden"></p>
                 <div class="w-full flex justify-center mt-6">
                     <div class="chart-container">
                         <canvas id="priceChart"></canvas>
                     </div>
                 </div>
-                <div id="debugPanel" class="w-full mt-4 p-3 bg-gray-100 border border-gray-300 rounded-lg text-xs font-mono"></div>
             </div>
         </div>
     </div>
@@ -162,41 +160,50 @@
             </div>
             <!-- Right Panel for Chart -->
             <div class="panel right-panel">
-                <!-- Cashflow Overview Container -->
-                <div id="cashflowOverviewContainer">
+                <!-- Cashflow Overview Panel -->
+                <div id="cashflowOverviewPanel">
                     <div class="recipes-slider-container mt-4 mb-2 flex flex-col items-center">
                         <label for="recipesYearSlider" id="recipesYearLabel" class="block text-sm font-medium text-gray-700 mb-1">Year: <span id="recipesYearValue"></span></label>
                         <input type="range" id="recipesYearSlider" class="recipes-year-slider" min="0" max="0" value="0" step="1" style="width: 80%;">
                     </div>
                     <div id="recipesSankeyChart"></div>
-                    <div id="recipesDebugPanel" class="w-full mt-4 p-3 bg-gray-100 border border-gray-300 rounded-lg text-xs font-mono"></div>
                 </div>
-                <!-- Growth Attribution Year Range Slider (hidden by default) -->
-                <div id="growthAttributionSliderContainer" class="timeframe-slider-container mb-4" style="display: none;">
-                    <div class="slider-labels">
-                        <span id="growth-year-range-label">20 years ago - Today</span>
+                <!-- Growth Attribution Panel -->
+                <div id="growthAttributionPanel" style="display: none;">
+                    <div id="growthAttributionSliderContainer" class="timeframe-slider-container mb-4">
+                        <div class="slider-labels">
+                            <span id="growth-year-range-label">20 years ago - Today</span>
+                        </div>
+                        <div class="slider-track"></div>
+                        <input type="range" id="growthLeftSlider" class="timeframe-slider" min="0" max="20" value="0" step="1">
+                        <input type="range" id="growthRightSlider" class="timeframe-slider" min="0" max="20" value="20" step="1">
                     </div>
-                    <div class="slider-track"></div>
-                    <input type="range" id="growthLeftSlider" class="timeframe-slider" min="0" max="20" value="0" step="1">
-                    <input type="range" id="growthRightSlider" class="timeframe-slider" min="0" max="20" value="20" step="1">
+                    <div id="growthAttributionChartContainer"></div>
                 </div>
-                <div id="growthAttributionChartContainer"></div>
-                <div id="growthAttributionDebugPanel" class="w-full mt-4 p-3 bg-gray-100 border border-gray-300 rounded-lg text-xs font-mono"></div>
-                <!-- Dividend Growth Attribution Year Range Slider (hidden by default) -->
-                <div id="dividendGrowthAttributionSliderContainer" class="timeframe-slider-container mb-4" style="display: none;">
-                    <div class="slider-labels">
-                        <span id="dividend-growth-year-range-label">20 years ago - Today</span>
+                <!-- Dividend Growth Attribution Panel -->
+                <div id="dividendGrowthAttributionPanel" style="display: none;">
+                    <div id="dividendGrowthAttributionSliderContainer" class="timeframe-slider-container mb-4">
+                        <div class="slider-labels">
+                            <span id="dividend-growth-year-range-label">20 years ago - Today</span>
+                        </div>
+                        <div class="slider-track"></div>
+                        <input type="range" id="dividendGrowthLeftSlider" class="timeframe-slider" min="0" max="20" value="0" step="1">
+                        <input type="range" id="dividendGrowthRightSlider" class="timeframe-slider" min="0" max="20" value="20" step="1">
                     </div>
-                    <div class="slider-track"></div>
-                    <input type="range" id="dividendGrowthLeftSlider" class="timeframe-slider" min="0" max="20" value="0" step="1">
-                    <input type="range" id="dividendGrowthRightSlider" class="timeframe-slider" min="0" max="20" value="20" step="1">
+                    <div id="dividendGrowthAttributionChartContainer"></div>
                 </div>
-                <div id="dividendGrowthAttributionChartContainer"></div>
-                <div id="dividendGrowthAttributionDebugPanel" class="w-full mt-4 p-3 bg-gray-100 border border-gray-300 rounded-lg text-xs font-mono"></div>
             </div>
         </div>
     </div>
     <script type="module" src="script.js"></script>
     <!-- Ensure tab click JS is at the end of script.js and not blocked by module scoping -->
+    <!-- Error Modal for displaying error messages/stack traces -->
+    <div id="errorModal" class="modal" style="display:none;">
+      <div class="modal-content">
+        <span id="closeErrorModal" class="close">&times;</span>
+        <h2>Error</h2>
+        <pre id="errorModalMessage"></pre>
+      </div>
+    </div>
 </body>
 </html>
