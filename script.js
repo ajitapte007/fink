@@ -283,6 +283,7 @@ window.addEventListener('DOMContentLoaded', () => {
                 const cashflow = getReportByYear(cashflowReports, year) || {};
                 // Get values, FX adjusted
                 const totalRevenue = Number(income.totalRevenue ?? 0) * fxRateUsed;
+                const costOfRevenue = Number(income.costOfRevenue ?? 0) * fxRateUsed;
                 const operatingExpenses = Number(income.operatingExpenses ?? 0) * fxRateUsed;
                 const capitalExpenditures = Number(cashflow.capitalExpenditures ?? 0) * fxRateUsed;
                 const sga = Number(income.sellingGeneralAndAdministrative ?? 0) * fxRateUsed;
@@ -292,22 +293,24 @@ window.addEventListener('DOMContentLoaded', () => {
                 // Build nodes and links for Plotly multi-level Sankey, with formatted values
                 const nodes = [
                     `Total Revenue ($${formatLargeNumber(totalRevenue)})`,           // 0
-                    `Operating Expenses ($${formatLargeNumber(operatingExpenses)})`, // 1
-                    `Capital Expenditures ($${formatLargeNumber(capitalExpenditures)})`, // 2
-                    `Operating Cashflow ($${formatLargeNumber(operatingCashflow)})`, // 3
-                    `SG&A ($${formatLargeNumber(sga)})`,                             // 4
-                    `R&D ($${formatLargeNumber(rnd)})`,                              // 5
-                    `Other OpEx ($${formatLargeNumber(other2)})`                     // 6
+                    `Cost of Revenue ($${formatLargeNumber(costOfRevenue)})`,      // 1
+                    `Operating Expenses ($${formatLargeNumber(operatingExpenses)})`, // 2
+                    `Capital Expenditures ($${formatLargeNumber(capitalExpenditures)})`, // 3
+                    `Operating Cashflow ($${formatLargeNumber(operatingCashflow)})`, // 4
+                    `SG&A ($${formatLargeNumber(sga)})`,                             // 5
+                    `R&D ($${formatLargeNumber(rnd)})`,                              // 6
+                    `Other OpEx ($${formatLargeNumber(other2)})`                     // 7
                 ];
                 const links = [
                     // totalRevenue splits
-                    { source: 0, target: 1, value: operatingExpenses },
-                    { source: 0, target: 2, value: capitalExpenditures },
-                    { source: 0, target: 3, value: operatingCashflow },
+                    { source: 0, target: 1, value: costOfRevenue },
+                    { source: 0, target: 2, value: operatingExpenses },
+                    { source: 0, target: 3, value: capitalExpenditures },
+                    { source: 0, target: 4, value: operatingCashflow },
                     // operatingExpenses splits
-                    { source: 1, target: 4, value: sga },
-                    { source: 1, target: 5, value: rnd },
-                    { source: 1, target: 6, value: other2 }
+                    { source: 2, target: 5, value: sga },
+                    { source: 2, target: 6, value: rnd },
+                    { source: 2, target: 7, value: other2 }
                 ];
                 debugLogRecipes(`Sankey nodes: ${JSON.stringify(nodes)}`);
                 debugLogRecipes(`Sankey links: ${JSON.stringify(links)}`);
