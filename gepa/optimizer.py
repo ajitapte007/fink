@@ -5,9 +5,13 @@ import gepa
 import prompts
 
 def main():
-    print("Generating dataset...")
-    # Generating a slightly larger dataset
-    dataset = generate_synthetic_market_data(60)
+    import json
+    print("Loading datasets...")
+    with open("stock_data.json", "r") as f:
+        dataset = json.load(f)
+    
+    with open("holdout_data.json", "r") as f:
+        holdout_data = json.load(f)
     
     from collections import defaultdict
     import random
@@ -76,7 +80,7 @@ def main():
         adapter=adapter,
         reflection_lm=gemini_reflection_lm,
         reflection_prompt_template=prompts.REFLECTION_PROMPT_TEMPLATE,
-        max_metric_calls=150,
+        max_metric_calls=500,
         reflection_minibatch_size=5
     )
 
@@ -87,33 +91,30 @@ def main():
     print(optimizer.best_candidate["system_prompt"])
     print("\nBest Validation Score:", optimizer.val_aggregate_scores[optimizer.best_idx])
     
-    print("\n--- Testing on a Bubble Example ---")
-    bubble_data = {
-        'sector_context': "Meme Stocks, retail euphoria",
-        'financials': "P/E ratio: 150.0, Declining margins: -20.0%, Revenue growth decelerating",
-        'price_history': "Up 300% in 1 year, massive volatility, MACD highly divergent",
-        'recommendation': "Sell",
-        'future_return': -60.0,
-        'future_fundamentals_fact': "Growth completely rapidly evaporated. Margins compressed heavily under brutal competition and inventory glut.",
-        'future_sentiment_fact': "The narrative completely broke. Euphoria instantly rotated into panic, causing massive multiple contraction and institutional dumping."
-    }
+    print("\n--- Testing on Holdout Set (Base vs Optimized) ---")
     
-    print("Running Base Prompt...")
-    base_eval = adapter.evaluate([bubble_data], prompts.INITIAL_PROMPTS)
-    # Extract prediction from JSON dict instead of string
-    try:
-        base_pred = base_eval.outputs[0]["extracted_recommendation"]
-        print("Base Prediction (Raw JSON Data):", base_eval.outputs[0])
-    except Exception as e:
-        print("Base Prediction Failed:", e)
+    print(f"Evaluating {len(holdout_data)} holdout samples on Base Prompt...")
+    base_eval = adapter.evaluate(holdout_data, prompts.INITIAL_PROMPTS)
     
-    print("\nRunning Optimized Prompt...")
-    opt_eval = adapter.evaluate([bubble_data], optimizer.best_candidate)
-    try:
-        opt_pred = opt_eval.outputs[0]["extracted_recommendation"]
-        print("Optimized Prediction (Raw JSON Data):", opt_eval.outputs[0])
-    except Exception as e:
-        print("Optimized Prediction Failed:", e)
+    print(f"\nEvaluating {len(holdout_data)} holdout samples on Optimized Prompt...")
+    opt_eval = adapter.evaluate(holdout_data, optimizer.best_candidate)
+    
+    # Simple accuracy comparison
+    base_correct = 0
+    opt_correct = 0
+    
+    for i, data in enumerate(holdout_data):
+        target = data.get("recommendation", "Hold")
+        
+        base_pred = base_eval.outputs[i].get("extracted_recommendation", "Unknown") if base_eval.outputs[i] else "Unknown"
+        opt_pred = opt_eval.outputs[i].get("extracted_recommendation", "Unknown") if opt_eval.outputs[i] else "Unknown"
+        
+        if base_pred == target: base_correct += 1
+        if opt_pred == target: opt_correct += 1
+        
+    print(f"\nHoldout Set Evaluation Complete:")
+    print(f"Base Prompt Accuracy:      {base_correct}/{len(holdout_data)} ({(base_correct/len(holdout_data))*100:.1f}%)")
+    print(f"Optimized Prompt Accuracy: {opt_correct}/{len(holdout_data)} ({(opt_correct/len(holdout_data))*100:.1f}%)")
 
 if __name__ == "__main__":
     main()

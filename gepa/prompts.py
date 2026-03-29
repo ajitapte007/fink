@@ -31,7 +31,7 @@ The following are examples of different task inputs provided to the assistant al
 <side_info>
 ```
 
-Your task is to write a new instruction for the assistant.
+Your task is to write a new instruction for the assistant. The idea is to write a detailed report for investors that assesses the risk/reward for future price action, based on its historical price, sentiment and fundamentals.
 
 Read the inputs carefully and identify the input format and infer detailed task description about the task I wish to solve with the assistant.
 

@@ -52,8 +52,8 @@ async def stock_reward_metric(prediction: dict, true_future_return: float, true_
         s_score = float(scores_json.get("sentiment_score", 0.0))
         reasoning = scores_json.get("reasoning", "No reasoning provided.")
         
-        # Calculate Equally Weighted Average
-        final_score = (p_score + f_score + s_score) / 3.0
+        # Calculate Weighted Average (Price is most important)
+        final_score = (p_score * 2.0 + f_score + s_score) / 4.0
         
         return final_score, f"Price: {p_score}, Fund: {f_score}, Sent: {s_score}. {reasoning}"
         
