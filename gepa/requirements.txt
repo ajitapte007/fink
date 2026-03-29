@@ -1,0 +1,7 @@
+yfinance
+pandas
+google-genai
+pytest
+pytest-asyncio
+tqdm
+git+https://github.com/gepa-ai/gepa.git
