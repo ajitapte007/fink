@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fink</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js CDN for interactive charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script>
+    <link rel="stylesheet" href="styles.css">
+    <!-- Plotly.js for interactive Sankey diagrams -->
+    <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+</head>
+
+<body>
+    <div class="header">
+        <h1 class="text-3xl font-bold">Fink: Personal Finance Due Diligence</h1>
+    </div>
+    <div class="input-panel">
+        <label for="tickerInputTop"><b>Ticker</b></label>
+        <input id="tickerInputTop" type="text" placeholder="Enter stock ticker (e.g., IBM)"
+            class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 shadow-sm">
+        <label for="alphaVantageApiKeyTop"><b><a href="https://www.alphavantage.co/support/#api-key"
+                    target="_blank">AlphaVantage API Key</a></b></label>
+        <input id="alphaVantageApiKeyTop" type="password" placeholder="API Key"
+            class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 shadow-sm">
+        <button id="loadBtn"
+            class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-6 rounded-lg shadow-md">Load</button>
+        <div id="loadingSpinner" class="loading-spinner inline-block align-middle ml-2"></div>
+    </div>
+    <div class="tabs">
+        <button class="tab active" data-tab="raw">Raw Metrics</button>
+        <button class="tab" data-tab="recipes">Deeper Insights</button>
+        <button class="tab bg-gradient-to-r from-purple-500 to-indigo-500 text-white font-semibold border-none ml-2"
+            data-tab="ai">✨ AI Analysis</button>
+        <button
+            class="tab bg-gradient-to-r from-pink-500 to-rose-500 text-white font-semibold border-none rounded-t-lg ml-2"
+            data-tab="debate">🎙️ Live Debate</button>
+    </div>
+    <div class="tab-content" id="tab-raw">
+        <div class="main-container">
+            <!-- Left Panel for Controls -->
+            <div class="panel left-panel">
+                <div class="metric-group">
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="togglePrice" checked>
+                        <label for="togglePrice">Price</label>
+                    </div>
+                </div>
+                <div class="metric-group-scrollable p-4 border rounded-lg">
+                    <div class="metric-group mb-4">
+                        <h3 class="text-md font-semibold text-gray-700 mb-2">Business</h3>
+                        <div class="flex flex-col items-start gap-2">
+                            <div class="radio-item">
+                                <input type="radio" id="selectRevenues" name="ratioSelect" value="REVENUES">
+                                <label for="selectRevenues">Revenues</label>
+                            </div>
+                            <div class="radio-item">
+                                <input type="radio" id="selectNetIncome" name="ratioSelect" value="NET_INCOME">
+                                <label for="selectNetIncome">Net Income</label>
+                            </div>
+                            <div class="radio-item">
+                                <input type="radio" id="selectEPS" name="ratioSelect" value="EPS">
+                                <label for="selectEPS">EPS (Annual)</label>
+                            </div>
+                            <div class="radio-item">
+                                <input type="radio" id="selectCapex" name="ratioSelect" value="CAPEX">
+                                <label for="selectCapex">Capital Expenditures</label>
+                            </div>
+                            <div class="radio-item">
+                                <input type="radio" id="selectFCF" name="ratioSelect" value="FCF">
+                                <label for="selectFCF">Free Cash Flow (FCF)</label>
+                            </div>
+                            <div class="radio-item">
+                                <input type="radio" id="selectOperatingCashflow" name="ratioSelect"
+                                    value="OPERATING_CASHFLOW">
+                                <label for="selectOperatingCashflow">Operating Cash Flow (OCF)</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="metric-group mb-4">
+                        <h3 class="text-md font-semibold text-gray-700 mb-2">Valuation Ratios</h3>
+                        <div class="flex flex-col items-start gap-2">
+                            <div class="flex items-center">
+                                <input type="radio" id="selectPERatio" name="ratioSelect"
+                                    class="h-4 w-4 text-blue-600 border-gray-300" value="PE">
+                                <label for="selectPERatio" class="ml-2 block text-sm text-gray-900">P/E</label>
+                            </div>
+                            <div class="flex items-center">
+                                <input type="radio" id="selectPSRatio" name="ratioSelect"
+                                    class="h-4 w-4 text-blue-600 border-gray-300" value="PS">
+                                <label for="selectPSRatio" class="ml-2 block text-sm text-gray-900">P/S</label>
+                            </div>
+                            <div class="flex items-center">
+                                <input type="radio" id="selectPFCFRatio" name="ratioSelect"
+                                    class="h-4 w-4 text-blue-600 border-gray-300" value="PFCF">
+                                <label for="selectPFCFRatio" class="ml-2 block text-sm text-gray-900">P/FCF</label>
+                            </div>
+                            <div class="flex items-center">
+                                <input type="radio" id="selectPOcfRatio" name="ratioSelect"
+                                    class="h-4 w-4 text-blue-600 border-gray-300" value="POCF">
+                                <label for="selectPOcfRatio" class="ml-2 block text-sm text-gray-900">P/OCF</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="metric-group">
+                        <h3 class="text-md font-semibold text-gray-700 mb-2">Shareholders</h3>
+                        <div class="flex flex-col items-start gap-2">
+                            <div class="flex items-center">
+                                <input type="radio" id="selectSharesOutstanding" name="ratioSelect"
+                                    class="h-4 w-4 text-blue-600 border-gray-300" value="SO">
+                                <label for="selectSharesOutstanding" class="ml-2 block text-sm text-gray-900">Shares
+                                    Outstanding</label>
+                            </div>
+                            <div class="flex items-center">
+                                <input type="radio" id="selectDividends" name="ratioSelect"
+                                    class="h-4 w-4 text-blue-600 border-gray-300" value="DIVIDENDS">
+                                <label for="selectDividends" class="ml-2 block text-sm text-gray-900">Dividends
+                                    (TTM)</label>
+                            </div>
+                            <div class="flex items-center">
+                                <input type="radio" id="selectDividendYield" name="ratioSelect"
+                                    class="h-4 w-4 text-blue-600 border-gray-300" value="DIVYIELD">
+                                <label for="selectDividendYield" class="ml-2 block text-sm text-gray-900">Dividend Yield
+                                    (TTM)</label>
+                            </div>
+                            <div class="flex items-center">
+                                <input type="radio" id="selectPayoutRatioFcf" name="ratioSelect"
+                                    class="h-4 w-4 text-blue-600 border-gray-300" value="PAYOUT_RATIO_FCF">
+                                <label for="selectPayoutRatioFcf" class="ml-2 block text-sm text-gray-900">Payout Ratio
+                                    (FCF)</label>
+                            </div>
+                            <div class="flex items-center">
+                                <input type="radio" id="selectPayoutRatioOcf" name="ratioSelect"
+                                    class="h-4 w-4 text-blue-600 border-gray-300" value="PAYOUT_RATIO_OCF">
+                                <label for="selectPayoutRatioOcf" class="ml-2 block text-sm text-gray-900">Payout Ratio
+                                    (OCF)</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Right Panel for Chart -->
+            <div class="panel right-panel">
+                <div id="timeframeSlider" class="timeframe-slider-container mb-4">
+                    <div class="slider-labels">
+                        <span id="year-range-label">20 years ago - Today</span>
+                    </div>
+                    <div class="slider-track"></div>
+                    <input type="range" id="leftSlider" class="timeframe-slider" min="0" max="20" value="0" step="1">
+                    <input type="range" id="rightSlider" class="timeframe-slider" min="0" max="20" value="20" step="1">
+                </div>
+                <div class="w-full flex justify-center mt-6">
+                    <div class="chart-container">
+                        <canvas id="priceChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="tab-content" id="tab-recipes">
+        <div class="main-container">
+            <!-- Left Panel for Recipe Selection -->
+            <div class="panel left-panel">
+                <div class="metric-group">
+                    <div class="flex flex-col items-start gap-2">
+                        <div class="radio-item">
+                            <input type="radio" id="recipeCashflowOverview" name="recipeSelect" value="cashflowOverview"
+                                checked>
+                            <label for="recipeCashflowOverview">Cashflow Overview</label>
+                        </div>
+                        <div class="radio-item">
+                            <input type="radio" id="recipeGrowthAttribution" name="recipeSelect"
+                                value="growthAttribution">
+                            <label for="recipeGrowthAttribution">Growth attribution</label>
+                        </div>
+                        <div class="radio-item">
+                            <input type="radio" id="recipeDividendGrowthAttribution" name="recipeSelect"
+                                value="dividendGrowthAttribution">
+                            <label for="recipeDividendGrowthAttribution">Dividend Growth Attribution</label>
+                        </div>
+                        <!-- Add more recipes here in the future -->
+                    </div>
+                </div>
+            </div>
+            <!-- Right Panel for Chart -->
+            <div class="panel right-panel">
+                <!-- Cashflow Overview Panel -->
+                <div id="cashflowOverviewPanel">
+                    <div class="recipes-slider-container mt-4 mb-2 flex flex-col items-center">
+                        <label for="recipesYearSlider" id="recipesYearLabel"
+                            class="block text-sm font-medium text-gray-700 mb-1">Year: <span
+                                id="recipesYearValue"></span></label>
+                        <input type="range" id="recipesYearSlider" class="recipes-year-slider" min="0" max="0" value="0"
+                            step="1" style="width: 80%;">
+                    </div>
+                    <div id="recipesSankeyChart"></div>
+                </div>
+                <!-- Growth Attribution Panel -->
+                <div id="growthAttributionPanel" style="display: none;">
+                    <div id="growthAttributionSliderContainer" class="timeframe-slider-container mb-4">
+                        <div class="slider-labels">
+                            <span id="growth-year-range-label">20 years ago - Today</span>
+                        </div>
+                        <div class="slider-track"></div>
+                        <input type="range" id="growthLeftSlider" class="timeframe-slider" min="0" max="20" value="0"
+                            step="1">
+                        <input type="range" id="growthRightSlider" class="timeframe-slider" min="0" max="20" value="20"
+                            step="1">
+                    </div>
+                    <div id="growthAttributionChartContainer"></div>
+                </div>
+                <!-- Dividend Growth Attribution Panel -->
+                <div id="dividendGrowthAttributionPanel" style="display: none;">
+                    <div id="dividendGrowthAttributionSliderContainer" class="timeframe-slider-container mb-4">
+                        <div class="slider-labels">
+                            <span id="dividend-growth-year-range-label">20 years ago - Today</span>
+                        </div>
+                        <div class="slider-track"></div>
+                        <input type="range" id="dividendGrowthLeftSlider" class="timeframe-slider" min="0" max="20"
+                            value="0" step="1">
+                        <input type="range" id="dividendGrowthRightSlider" class="timeframe-slider" min="0" max="20"
+                            value="20" step="1">
+                    </div>
+                    <div id="dividendGrowthAttributionChartContainer"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI Analysis Tab -->
+    <div class="tab-content" id="tab-ai" style="display: none;">
+        <div class="max-w-7xl mx-auto p-6 bg-white rounded-lg shadow-sm border mt-4">
+            <div class="flex justify-between items-center mb-6 border-b pb-4">
+                <div>
+                    <h2 class="text-2xl font-bold text-gray-800">GEPA: AI Investment Committee</h2>
+                    <p class="text-gray-500 text-sm mt-1">Multi-agent analysis using real-time financial data.</p>
+                </div>
+                <div class="flex items-center gap-4">
+                    <button id="runAiBtn"
+                        class="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold py-2 px-6 rounded-lg shadow-md transition-all">
+                        Run Full Analysis
+                    </button>
+                    <div id="aiLoadingSpinner" class="loading-spinner" style="display: none;"></div>
+                </div>
+            </div>
+
+            <div id="aiReportContainer" style="display: none;">
+                <!-- Content will be injected by script.js -->
+            </div>
+
+            <div id="aiEmptyState" class="text-center py-16 text-gray-400">
+                <svg class="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z">
+                    </path>
+                </svg>
+                <p class="text-lg">Enter a ticker above and click "Run Full Analysis" to generate an AI report.</p>
+                <p class="text-sm mt-2">Note: Analysis takes 15-30 seconds as multiple agents review the data.</p>
+            </div>
+        </div>
+    </div>
+    </div>
+
+    <!-- Live Debate Tab -->
+    <div class="tab-content" id="tab-debate" style="display: none;">
+        <div class="max-w-4xl mx-auto p-6 bg-white rounded-lg shadow-sm border mt-4">
+            <div class="flex justify-between items-center mb-6 border-b pb-4">
+                <div>
+                    <h2 class="text-2xl font-bold text-gray-800">🎙️ Live Multi-Agent Debate</h2>
+                    <p class="text-gray-500 text-sm mt-1">Watch Bull, Bear, and Neutral analysts debate in real-time.
+                    </p>
+                </div>
+                <div class="flex items-center gap-4">
+                    <button id="startDebateBtn"
+                        class="bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-700 hover:to-rose-700 text-white font-bold py-2 px-6 rounded-lg shadow-md transition-all">
+                        Start Debate
+                    </button>
+                    <div id="debateLoadingSpinner" class="loading-spinner" style="display: none;"></div>
+                </div>
+            </div>
+
+            <div id="debateChatContainer"
+                class="flex flex-col gap-4 max-h-[600px] overflow-y-auto p-4 bg-gray-50 rounded-lg border"
+                style="display: none;">
+                <!-- Chat messages will stream here -->
+            </div>
+
+            <div id="debateEmptyState" class="text-center py-16 text-gray-400">
+                <svg class="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z">
+                    </path>
+                </svg>
+                <p class="text-lg">Click "Start Debate" to watch the AI agents analyze this stock live.</p>
+                <p class="text-sm mt-2">Messages will stream in as they are generated.</p>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="script.js?v=2"></script>
+    <!-- Ensure tab click JS is at the end of script.js and not blocked by module scoping -->
+    <!-- Error Modal for displaying error messages/stack traces -->
+    <div id="errorModal" class="modal" style="display:none;">
+        <div class="modal-content">
+            <span id="closeErrorModal" class="close">&times;</span>
+            <h2>Error</h2>
+            <pre id="errorModalMessage"></pre>
+        </div>
+    </div>
+</body>
+
+</html>
