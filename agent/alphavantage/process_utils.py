@@ -401,5 +401,6 @@ def get_corporate_identity(raw_cache: dict) -> 'CorporateIdentity':
         last_closing_price=last_closing_price_str,
         market_cap=market_cap_str,
         sector=sector,
-        industry=industry
+        industry=industry,
+        last_refreshed=raw_cache.get("_meta_last_refreshed", "Unknown")
     )

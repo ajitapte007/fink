@@ -4,7 +4,7 @@ import time
 import requests
 from pathlib import Path
 
-API_KEY = os.getenv("ALPHAVANTAGE_API_KEY", "3G4CDSY4TJ4QVIXF")
+API_KEY = os.getenv("ALPHAVANTAGE_API_KEY")
 TICKERS = ["AAPL", "UNH", "PG", "AMZN", "NEE"]
 FUNCTIONS = ["OVERVIEW", "TIME_SERIES_MONTHLY_ADJUSTED", "INCOME_STATEMENT", "BALANCE_SHEET", "CASH_FLOW"]
 CACHE_DIR = Path(__file__).parent / "local_av_cache"

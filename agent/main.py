@@ -1,4 +1,7 @@
 import uvicorn
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from models import ChatRequest, SynthesisRequest, PlanResponse, OverviewDataResponse, HistoricalDataResponse, ChatSynthesisResponse
@@ -20,7 +23,7 @@ app.add_middleware(
 @app.post("/api/plan", response_model=PlanResponse)
 async def plan_endpoint(request: ChatRequest):
     try:
-        return get_plan(request.ticker, request.message)
+        return get_plan(request.ticker, request.message, request.force_refresh)
     except Exception as e:
         raise e
 

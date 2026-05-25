@@ -34,8 +34,8 @@ def get_or_create_cache(ticker: str, raw_cache: dict) -> str:
     _CACHE_MAP[ticker] = c.name
     return c.name
 
-def get_plan(ticker: str, message: str) -> PlanResponse:
-    raw_cache = get_all_data_for_ticker(ticker)
+def get_plan(ticker: str, message: str, force_refresh: bool = False) -> PlanResponse:
+    raw_cache = get_all_data_for_ticker(ticker, force_refresh)
     
     # We only need the OVERVIEW portion for planning, no need to send the full 150k token cache
     # This makes the planner incredibly fast and cheap.

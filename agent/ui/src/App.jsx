@@ -13,6 +13,8 @@ export default function App() {
   const [agentData, setAgentData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('overview'); // 'overview' or 'historical'
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshStatus, setRefreshStatus] = useState('');
 
   // Historical chart states
   const [selectedMetrics, setSelectedMetrics] = useState([]); // e.g. ['Revenue', 'Net Income']
@@ -28,24 +30,28 @@ export default function App() {
     }
   }, [chatHistory]);
 
-  const triggerAnalysis = async (targetTicker, customMessage = "", isSilent = false) => {
+  const triggerAnalysis = async (targetTicker, customMessage = "", isSilent = false, forceRefresh = false) => {
     const messageToSend = customMessage.trim() || `Analyze ${targetTicker}`;
 
     if (!isSilent) {
       setChatHistory(prev => [...prev, { role: 'user', content: messageToSend, pathway: ["Coordinator Agent (Planning...)"] }]);
     }
-    setLoading(true);
+
+    // Only show main loading spinner if we are not doing a silent background refresh
+    if (!isSilent || !forceRefresh) {
+      setLoading(true);
+    }
 
     try {
-      const payload = JSON.stringify({ ticker: targetTicker, message: messageToSend });
-      
+      const payload = JSON.stringify({ ticker: targetTicker, message: messageToSend, force_refresh: forceRefresh });
+
       // Stage 1: Plan
       const planRes = await fetch('http://localhost:8000/api/plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: payload
       }).then(r => r.json());
-      
+
       setAgentData(prev => ({ ...(prev || {}), corporate_identity: planRes.corporate_identity }));
       setTicker(planRes.corporate_identity.ticker);
       setTopTickerInput(planRes.corporate_identity.ticker);
@@ -193,7 +199,26 @@ export default function App() {
         ]);
       }
     } finally {
-      setLoading(false);
+      if (!isSilent || !forceRefresh) {
+        setLoading(false);
+      }
+    }
+  };
+
+  const handleBackgroundRefresh = async () => {
+    if (!ticker || isRefreshing) return;
+    setIsRefreshing(true);
+    setRefreshStatus("Refreshing...");
+    try {
+      await triggerAnalysis(ticker, "", true, true);
+      setRefreshStatus("Success!");
+    } catch (err) {
+      setRefreshStatus("Failed");
+    } finally {
+      setTimeout(() => {
+        setIsRefreshing(false);
+        setRefreshStatus("");
+      }, 3000);
     }
   };
 
@@ -213,7 +238,7 @@ export default function App() {
     const numValue = Number(value);
     if (value === null || value === undefined || isNaN(numValue)) return '';
     const absVal = Math.abs(numValue);
-    
+
     let formatted = '';
     if (absVal >= 1.0e12) {
       formatted = (numValue / 1.0e12).toFixed(2) + 'T';
@@ -228,7 +253,7 @@ export default function App() {
     } else {
       formatted = numValue.toFixed(1);
     }
-    
+
     return isPercent ? `${formatted}%` : formatted;
   };
 
@@ -295,20 +320,43 @@ export default function App() {
     <div className="workspace">
       {/* LEFT SIDEBAR: Nav Tabs */}
       <div className="left-sidebar">
-        <button
-          className={`sidebar-tab-btn ${activeTab === 'overview' ? 'active' : ''}`}
-          onClick={() => setActiveTab('overview')}
-          title="Overview Dashboard"
-        >
-          📊
-        </button>
-        <button
-          className={`sidebar-tab-btn ${activeTab === 'historical' ? 'active' : ''}`}
-          onClick={() => setActiveTab('historical')}
-          title="Historical Charts"
-        >
-          📈
-        </button>
+        <div className="sidebar-top-group">
+          <button
+            className={`sidebar-tab-btn ${activeTab === 'overview' ? 'active' : ''}`}
+            onClick={() => setActiveTab('overview')}
+            title="Overview Dashboard"
+          >
+            📊
+          </button>
+          <button
+            className={`sidebar-tab-btn ${activeTab === 'historical' ? 'active' : ''}`}
+            onClick={() => setActiveTab('historical')}
+            title="Historical Charts"
+          >
+            📈
+          </button>
+        </div>
+        <div className="sidebar-bottom-group">
+          {refreshStatus && (
+            <div className={`refresh-status-text ${refreshStatus === 'Failed' ? 'error' : ''}`}>
+              {refreshStatus}
+            </div>
+          )}
+          {agentData && agentData.corporate_identity && agentData.corporate_identity.last_refreshed !== "Unknown" && !refreshStatus && (
+            <div className="sidebar-date-text" title="Synced">
+              Synced<br />
+              {agentData.corporate_identity.last_refreshed.split(' ')[0]}
+            </div>
+          )}
+          <button
+            className={`sidebar-refresh-btn ${isRefreshing ? 'refreshing' : ''}`}
+            onClick={handleBackgroundRefresh}
+            disabled={!ticker || isRefreshing}
+            title="Force refresh data"
+          >
+            🔄
+          </button>
+        </div>
       </div>
 
       {/* CENTER CANVAS: Dynamic Visualization Stage */}

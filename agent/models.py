@@ -21,6 +21,7 @@ class CorporateIdentity(BaseModel):
     market_cap: str
     sector: str
     industry: str
+    last_refreshed: str = "Unknown"
 
 class UIState(BaseModel):
     active_tab: str = Field(..., description="Target UI tab: 'overview' or 'historical'")
@@ -70,6 +71,7 @@ class SynthesisLLMOutput(BaseModel):
 class ChatRequest(BaseModel):
     ticker: str
     message: str
+    force_refresh: bool = False
 
 class SynthesisRequest(BaseModel):
     ticker: str
