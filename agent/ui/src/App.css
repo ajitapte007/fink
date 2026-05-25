@@ -515,7 +515,7 @@ input[type="range"].timeframe-slider::-moz-range-thumb {
   justify-content: center;
   position: relative;
   width: 100%;
-  min-height: 0;
+  min-height: 400px;
   min-width: 0;
 }
 
