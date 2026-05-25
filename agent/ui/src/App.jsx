@@ -102,6 +102,12 @@ export default function App() {
           historical_chart_data: histRes.historical_chart_data
         }));
 
+        const hData = histRes.historical_chart_data || [];
+        if (hData.length > 0) {
+          setSliderStart(0);
+          setSliderEnd(hData.length - 1);
+        }
+
         if (!isSilent) {
           setChatHistory(prev => {
             const updated = [...prev];
@@ -308,13 +314,6 @@ export default function App() {
   const startDateText = allHistoricalData[sliderStart]?.date || '';
   const endDateText = allHistoricalData[sliderEnd]?.date || '';
 
-  // Synchronize start/end default boundaries on ticker loads
-  useEffect(() => {
-    if (allHistoricalData.length > 0 && activeTab === 'overview') {
-      setSliderStart(0);
-      setSliderEnd(allHistoricalData.length - 1);
-    }
-  }, [agentData]);
 
   return (
     <div className="workspace">
