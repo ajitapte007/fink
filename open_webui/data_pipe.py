@@ -571,13 +571,37 @@ class Pipe:
         # Yield first progress indicator to reduce perceived latency
         yield "🔍 Checking request intent and extracting stock preferences...\n\n"
 
-        # 1. Pre-flight Preference Extraction (captures ticker, metrics list, and date range bounds)
+        # 1. Local Ticker Pre-Extraction
+        query_lower = messages[-1]["content"].lower() if messages else ""
+        local_ticker = None
+        local_is_financial = False
+        
+        if "unh" in query_lower or "unitedhealth" in query_lower:
+            local_ticker = "UNH"
+            local_is_financial = True
+        elif "aapl" in query_lower or "apple" in query_lower:
+            local_ticker = "AAPL"
+            local_is_financial = True
+        elif "amzn" in query_lower or "amazon" in query_lower:
+            local_ticker = "AMZN"
+            local_is_financial = True
+        elif "nvda" in query_lower or "nvidia" in query_lower:
+            local_ticker = "NVDA"
+            local_is_financial = True
+        elif "pg" in query_lower or "procter" in query_lower:
+            local_ticker = "PG"
+            local_is_financial = True
+        elif "nee" in query_lower or "nextera" in query_lower:
+            local_ticker = "NEE"
+            local_is_financial = True
+
+        # 2. Pre-flight Preference Extraction (captures ticker, metrics list, and date range bounds)
         preferences = self.extract_user_preferences(messages, gemini_key)
-        ticker = preferences["ticker"]
+        ticker = preferences["ticker"] or local_ticker
+        is_financial_query = preferences.get("is_financial_query", False) or local_is_financial
         selected_metrics = preferences["metrics"]
         start_date = preferences["start_date"]
         end_date = preferences["end_date"]
-        is_financial_query = preferences.get("is_financial_query", False)
 
         # Yield ticker identification details if found
         if ticker:
@@ -704,7 +728,10 @@ class Pipe:
         try:
             # Yield preflight warning if any
             if preferences.get("error"):
-                yield f"[Warning: Pre-flight stock preference extraction had a connection error: {preferences['error']}. Falling back to default settings.]\n\n"
+                if ticker:
+                    yield f"[Warning: Pre-flight preference refinement failed ({preferences['error']}). Using local ticker resolution and defaults.]\n\n"
+                else:
+                    yield f"[Warning: Pre-flight stock preference extraction had a connection error: {preferences['error']}. Falling back to default settings.]\n\n"
             # Yield cleanup warning if any
             if cleanup_error:
                 yield f"[Warning: Disk cleanup failed for stale static chart files: {cleanup_error}]\n\n"
