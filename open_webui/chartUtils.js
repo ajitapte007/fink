@@ -262,8 +262,8 @@ export function setupDualSlider(startSliderId, endSliderId, trackClass, startLab
     endSlider.value = max;
     
     function updateUI() {
-        let val1 = parseInt(startSlider.value) || 0;
-        let val2 = parseInt(endSlider.value) || max;
+        let val1 = isNaN(parseInt(startSlider.value)) ? 0 : parseInt(startSlider.value);
+        let val2 = isNaN(parseInt(endSlider.value)) ? max : parseInt(endSlider.value);
         
         if (val1 > val2) {
             [val1, val2] = [val2, val1];
@@ -282,23 +282,23 @@ export function setupDualSlider(startSliderId, endSliderId, trackClass, startLab
     }
     
     startSlider.addEventListener('input', () => {
-        let val1 = parseInt(startSlider.value) || 0;
-        let val2 = parseInt(endSlider.value) || max;
+        let val1 = isNaN(parseInt(startSlider.value)) ? 0 : parseInt(startSlider.value);
+        let val2 = isNaN(parseInt(endSlider.value)) ? max : parseInt(endSlider.value);
         if (val1 > val2) {
             startSlider.value = val2;
         }
         updateUI();
-        onUpdate(parseInt(startSlider.value), parseInt(endSlider.value));
+        onUpdate(isNaN(parseInt(startSlider.value)) ? 0 : parseInt(startSlider.value), isNaN(parseInt(endSlider.value)) ? max : parseInt(endSlider.value));
     });
     
     endSlider.addEventListener('input', () => {
-        let val1 = parseInt(startSlider.value) || 0;
-        let val2 = parseInt(endSlider.value) || max;
+        let val1 = isNaN(parseInt(startSlider.value)) ? 0 : parseInt(startSlider.value);
+        let val2 = isNaN(parseInt(endSlider.value)) ? max : parseInt(endSlider.value);
         if (val2 < val1) {
             endSlider.value = val1;
         }
         updateUI();
-        onUpdate(parseInt(startSlider.value), parseInt(endSlider.value));
+        onUpdate(isNaN(parseInt(startSlider.value)) ? 0 : parseInt(startSlider.value), isNaN(parseInt(endSlider.value)) ? max : parseInt(endSlider.value));
     });
     
     updateUI();

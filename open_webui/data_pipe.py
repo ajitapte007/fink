@@ -397,8 +397,8 @@ class Pipe:
 
         const startSlider = document.getElementById('leftSlider');
         const endSlider = document.getElementById('rightSlider');
-        const startIdx = startSlider ? (parseInt(startSlider.value) || 0) : 0;
-        const endIdx = endSlider ? (parseInt(endSlider.value) || (commonLabels.length - 1)) : (commonLabels.length - 1);
+        const startIdx = startSlider ? (isNaN(parseInt(startSlider.value)) ? 0 : parseInt(startSlider.value)) : 0;
+        const endIdx = endSlider ? (isNaN(parseInt(endSlider.value)) ? (commonLabels.length - 1) : parseInt(endSlider.value)) : (commonLabels.length - 1);
         
         let filteredLabels = commonLabels.slice(startIdx, endIdx + 1);
         let filteredDatasets = datasets.map(ds => ({{ 
@@ -676,6 +676,13 @@ class Pipe:
         )
         
         try:
+            # Instantly append the interactive Chart.js HTML block from Python FIRST
+            if is_active:
+                self.generate_chart_html(ticker, processed_metrics, selected_metrics, start_date, end_date)
+                import time
+                yield f'<iframe src="/static/chart-{ticker.lower()}.html?t={int(time.time())}" width="100%" height="430" style="border:none; border-radius:12px; background:#0f172a; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);"></iframe>\n\n'
+            
+            # Then stream the text analysis
             response = client.chat.completions.create(
                 model=self.valves.GEMINI_MODEL,
                 messages=messages,
@@ -684,10 +691,5 @@ class Pipe:
             for chunk in response:
                 if chunk.choices and chunk.choices[0].delta.content:
                     yield chunk.choices[0].delta.content
-            
-            # Instantly append the interactive Chart.js HTML block from Python
-            if is_active:
-                self.generate_chart_html(ticker, processed_metrics, selected_metrics, start_date, end_date)
-                yield f'\n\n<iframe src="/static/chart-{ticker.lower()}.html" width="100%" height="430" style="border:none; border-radius:12px; background:#0f172a; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);"></iframe>\n'
         except Exception as e:
             yield f"Error calling Gemini completion: {e}"
