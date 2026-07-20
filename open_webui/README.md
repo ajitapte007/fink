@@ -124,3 +124,23 @@ curl -X POST http://localhost:3000/api/chat/completions \
     "stream": true
   }'
 ```
+
+---
+
+## 5. E2E Verification Workflow
+
+The verification suite contains two layers of automated checks ensuring script integrity, preventing blank screens, and avoiding false positives:
+
+1.  **Integration Tests (`pytest`)**:
+    *   Verifies preference extraction, SQLite database operations, TTL validation, monthly-to-daily mapping, and mock completion streams.
+    *   Command: `export PYTHONPATH=$(pwd)/open_webui && agent/.venv/bin/pytest open_webui/tests`
+2.  **Upgraded E2E Verification (`test_pipeline_e2e.py`)**:
+    *   **Simulated & Live Container Testing**: Simulates the Python generator locally and performs live REST calls against the container API sequentially.
+    *   **Three Code Path Verification**: Tests the Active State (successful chart compilation), Ticker Clarification State (requesting ticker for ambiguous stock queries), and Dormant State (faked general conversation).
+    *   **HTML Static Integrity Checks**: Checks compiled templates on disk and downloads live container-served HTML pages over HTTP to ensure:
+        *   No unreplaced Python format strings (`{chart_utils_code}`, etc.) exist.
+        *   `chartUtils.js` functions (`setupDualSlider`) are successfully inlined.
+        *   `processedMetrics` data block is populated with metrics.
+        *   Chart.js is initialized (`new Chart`).
+    *   Command: `export PYTHONPATH=$(pwd)/open_webui && agent/.venv/bin/python open_webui/test_pipeline_e2e.py both`
+

@@ -78,10 +78,10 @@ The following verification metrics detail what was checked, the execution result
 
 | Verification Target | Scope Checked | Result | Measured Latency |
 | :--- | :--- | :--- | :--- |
-| **Unit & Integration Tests** | SQLite TTL cache, offline fallbacks, date translations, and payload overrides. | **PASS** (15 tests passed) | `~13.08s` (total run) |
-| **Pre-flight Preferences Extraction** | Gemini JSON model intent parser (ticker, metrics, start/end dates). | **PASS** | `~1.2s to 1.8s` |
-| **E2E Simulated Pipeline** | Local in-memory execution of custom Pipe class. | **PASS** | `~180ms` (excluding stream generation) |
-| **E2E Container HTTP API** | Live HTTP POST chat completions request to container port 3000. | **PASS** | `~15.6s` (including full report stream) |
-| **Static Assets Integrity** | Dynamic styles injection and double-ended slider binding via `chartUtils.js`. | **PASS** | `0ms` (instant JS compile) |
-| **Static Assets Web Service** | Uvicorn serving static `/static/chartUtils.js` and dynamic `/static/chart-{ticker}.html`. | **PASS** (HTTP 200 OK) | `~2ms` (HTTP response) |
+| **Unit & Integration Tests** | SQLite TTL cache, offline fallbacks, date translations, and payload overrides. | **PASS** (17 tests passed) | `~13.22s` (total run) |
+| **Pre-flight Preferences Extraction** | Gemini JSON model intent parser (ticker, metrics, start/end dates). | **PASS** (unified user prompt) | `~1.2s to 1.8s` |
+| **E2E Simulated Pipeline** | Local in-memory execution of Active, Ticker Clarification, and Dormant states. | **PASS** | `~50ms` (excluding pre-flight) |
+| **E2E Container HTTP API** | Live HTTP completions request to container port 3000 for all 3 states. | **PASS** | `~120ms` (faked text completion) |
+| **Static HTML Integrity** | Inlined `chartUtils.js` checks, processedMetrics values, and Chart.js initialization tags. | **PASS** | `0ms` (instant static parsing) |
+| **Static Assets Web Service** | Uvicorn serving static `/static/chartUtils.js` and live container compiled dynamic `/static/chart-{ticker}.html`. | **PASS** (HTTP 200 OK) | `~2ms` (HTTP response) |
 | **Static Files Clean-up** | Automatic deletion of stale/expired `chart-*.html` files. | **PASS** | `<2ms` (SQLite scan & delete) |
