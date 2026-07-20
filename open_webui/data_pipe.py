@@ -75,14 +75,18 @@ class Pipe:
         )
         
         # Limit to the last 6 messages to keep latency low and context concise
-        preflight_messages = [
-            {"role": "system", "content": system_prompt}
-        ]
+        # Build a single user message containing the system instructions and conversation history
+        history_lines = []
         for msg in messages[-6:]:
-            preflight_messages.append({
-                "role": msg["role"],
-                "content": msg["content"]
-            })
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+            history_lines.append(f"{role.upper()}: {content}")
+        history_text = "\n".join(history_lines)
+        
+        user_prompt = f"{system_prompt}\n\n### CONVERSATION HISTORY TO ANALYZE:\n{history_text}"
+        preflight_messages = [
+            {"role": "user", "content": user_prompt}
+        ]
             
         try:
             response = client.chat.completions.create(
@@ -92,12 +96,13 @@ class Pipe:
                 max_tokens=150
             )
             content = response.choices[0].message.content.strip()
-            # Strip markdown wrappers if present
-            if content.startswith("```json"):
-                content = content[7:]
-            if content.endswith("```"):
-                content = content[:-3]
-            content = content.strip()
+            print(f"[PREFLIGHT] Raw model response: '{content}'")
+            
+            # Extract JSON block between first '{' and last '}'
+            start_idx = content.find("{")
+            end_idx = content.rfind("}")
+            if start_idx != -1 and end_idx != -1:
+                content = content[start_idx:end_idx+1]
             
             data = json.loads(content)
             ticker = data.get("ticker")
