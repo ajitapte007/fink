@@ -5,3 +5,5 @@ __pycache__/
 *.pyc
 *.db
 agent/.venv/
+.DS_Store
+open_webui/static/chart-*.html
