@@ -681,15 +681,15 @@ class Pipe:
                 self.generate_chart_html(ticker, processed_metrics, selected_metrics, start_date, end_date)
                 import time
                 yield f'<iframe src="/static/chart-{ticker.lower()}.html?t={int(time.time())}" width="100%" height="430" style="border:none; border-radius:12px; background:#0f172a; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);"></iframe>\n\n'
-            
-            # Then stream the text analysis
-            response = client.chat.completions.create(
-                model=self.valves.GEMINI_MODEL,
-                messages=messages,
-                stream=True
-            )
-            for chunk in response:
-                if chunk.choices and chunk.choices[0].delta.content:
-                    yield chunk.choices[0].delta.content
+            else:
+                # Then stream the text analysis only for general conversation (dormant)
+                response = client.chat.completions.create(
+                    model=self.valves.GEMINI_MODEL,
+                    messages=messages,
+                    stream=True
+                )
+                for chunk in response:
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        yield chunk.choices[0].delta.content
         except Exception as e:
             yield f"Error calling Gemini completion: {e}"
