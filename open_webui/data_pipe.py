@@ -722,7 +722,7 @@ class Pipe:
                 yield "✨ Chart compiled. Rendering visualization dashboard...\n\n"
                 self.generate_chart_html(ticker, processed_metrics, selected_metrics, start_date, end_date)
                 import time
-                yield f'<iframe src="/static/chart-{ticker.lower()}.html?t={int(time.time())}" width="100%" height="430" style="border:none; border-radius:12px; background:#0f172a; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);"></iframe>\n\n'
+                yield f'<iframe src="/static/chart-{ticker.lower()}.html?t={int(time.time())}" width="100%" height="430" style="border:none; border-radius:12px; background:#0f172a; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>\n\n'
             elif is_financial_query:
                 # Ask user to clarify ticker if it was a charting request but ticker was missing
                 yield "I would be happy to plot those metrics for you! Could you please specify which stock ticker symbol (e.g. UNH, AAPL, NVDA) you want to analyze?"

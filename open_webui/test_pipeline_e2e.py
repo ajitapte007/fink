@@ -90,6 +90,9 @@ def run_local_simulation(query: str):
         
         # Verify local file generation and integrity for active state
         if "UnitedHealth" in query or "unh" in query.lower():
+            if 'sandbox="allow-scripts allow-same-origin allow-forms"' not in response_text:
+                print("FAIL: local simulation iframe tag missing sandbox permissions attribute!")
+                sys.exit(1)
             if local_chart_file.exists():
                 with open(local_chart_file, "r") as f:
                     content = f.read()
@@ -153,6 +156,9 @@ def run_live_api_test(query: str):
             
             # Fetch and verify the live generated static chart over HTTP
             if "UnitedHealth" in query or "unh" in query.lower():
+                if 'sandbox="allow-scripts allow-same-origin allow-forms"' not in response_text:
+                    print("FAIL: live container API iframe tag missing sandbox permissions attribute!")
+                    sys.exit(1)
                 live_chart_url = "http://localhost:3000/static/chart-unh.html"
                 print(f"\nVerifying live compiled chart serving at {live_chart_url}...")
                 # Wait briefly for file system sync
