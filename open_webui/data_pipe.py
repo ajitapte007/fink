@@ -132,9 +132,13 @@ class Pipe:
 
     def generate_chart_html(self, ticker: str, processed_metrics: dict, selected_metrics: list, start_date: str, end_date: str):
         import json
-        from pathlib import Path
         current_dir = Path(__file__).parent.resolve()
         chart_utils_path = current_dir / "chartUtils.js"
+        if not chart_utils_path.exists():
+            chart_utils_path = Path("/app/backend/open_webui_analyst/chartUtils.js")
+        if not chart_utils_path.exists():
+            chart_utils_path = Path("/app/backend/open_webui/static/chartUtils.js")
+            
         chart_utils_code = ""
         if chart_utils_path.exists():
             try:
