@@ -120,7 +120,7 @@ def test_user_preferences_extraction():
     
     # Mock pre-flight LLM call returning a preferences JSON
     mock_choices = [MagicMock()]
-    mock_choices[0].message.content = '{"ticker": "AAPL", "metrics": ["price", "pe_ratio"], "start_date": "2021-07-20", "end_date": "2026-07-20"}'
+    mock_choices[0].message.content = '{"ticker": "AAPL", "is_financial_query": true, "metrics": ["price", "pe_ratio"], "start_date": "2021-07-20", "end_date": "2026-07-20"}'
     mock_response = MagicMock()
     mock_response.choices = mock_choices
     
@@ -128,15 +128,17 @@ def test_user_preferences_extraction():
         prefs = pipe.extract_user_preferences([{"role": "user", "content": "Explain Apple's margins over 5 years"}], "dummy_key")
         assert mock_create.call_count == 1
         assert prefs["ticker"] == "AAPL"
+        assert prefs["is_financial_query"] is True
         assert prefs["start_date"] == "2021-07-20"
         assert prefs["end_date"] == "2026-07-20"
         assert "price" in prefs["metrics"]
         
     # Mock pre-flight LLM call returning a dormant intent (null ticker)
-    mock_choices[0].message.content = '{"ticker": null, "metrics": ["price", "pe_ratio"], "start_date": null, "end_date": null}'
+    mock_choices[0].message.content = '{"ticker": null, "is_financial_query": false, "metrics": ["price", "pe_ratio"], "start_date": null, "end_date": null}'
     with patch("openai.resources.chat.completions.Completions.create", return_value=mock_response) as mock_create:
         prefs = pipe.extract_user_preferences([{"role": "user", "content": "How is the weather?"}], "dummy_key")
         assert prefs["ticker"] is None
+        assert prefs["is_financial_query"] is False
         assert prefs["start_date"] is None
         assert prefs["end_date"] is None
 
@@ -152,7 +154,7 @@ def test_payload_and_prompt_injection():
     ]
     
     # Mock preference extraction to return AAPL active state
-    with patch.object(pipe, "extract_user_preferences", return_value={"ticker": "AAPL", "metrics": ["price", "pe_ratio"], "start_date": None, "end_date": None}):
+    with patch.object(pipe, "extract_user_preferences", return_value={"ticker": "AAPL", "is_financial_query": True, "metrics": ["price", "pe_ratio"], "start_date": None, "end_date": None}):
         # Mock fetch_utils calls to avoid network hit
         mock_raw = {
             "OVERVIEW": {"Symbol": "AAPL", "AssetType": "Common Stock"},
@@ -193,3 +195,43 @@ def test_payload_and_prompt_injection():
                     sys_msg = messages[0]["content"]
                     assert "You are a professional financial due diligence analyst." in sys_msg
                     assert "Do NOT output any HTML blocks" in sys_msg
+
+def test_missing_ticker_clarification():
+    """Verify that a financial query with a missing ticker yields a clarification request."""
+    pipe = Pipe()
+    pipe.valves.GEMINI_API_KEY = "dummy_key"
+    pipe.valves.ALPHAVANTAGE_API_KEY = "dummy_av_key"
+    
+    messages = [
+        {"role": "user", "content": "plot price and pe ratio"}
+    ]
+    
+    # Mock preference extraction to return missing ticker but is_financial_query=True
+    with patch.object(pipe, "extract_user_preferences", return_value={"ticker": None, "is_financial_query": True, "metrics": ["price", "pe_ratio"], "start_date": None, "end_date": None}):
+        body = {
+            "messages": messages,
+            "model": "model_id"
+        }
+        generator = pipe.pipe(body)
+        response_text = "".join(list(generator))
+        assert "specify which stock ticker symbol" in response_text
+
+def test_faked_general_conversation():
+    """Verify that a general conversation query returns the faked placeholder response."""
+    pipe = Pipe()
+    pipe.valves.GEMINI_API_KEY = "dummy_key"
+    pipe.valves.ALPHAVANTAGE_API_KEY = "dummy_av_key"
+    
+    messages = [
+        {"role": "user", "content": "how is the weather?"}
+    ]
+    
+    # Mock preference extraction to return dormant state
+    with patch.object(pipe, "extract_user_preferences", return_value={"ticker": None, "is_financial_query": False, "metrics": ["price", "pe_ratio"], "start_date": None, "end_date": None}):
+        body = {
+            "messages": messages,
+            "model": "model_id"
+        }
+        generator = pipe.pipe(body)
+        response_text = "".join(list(generator))
+        assert "Gemini text analysis disabled for testing" in response_text

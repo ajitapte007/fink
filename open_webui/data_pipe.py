@@ -55,18 +55,20 @@ class Pipe:
         system_prompt = (
             "You are a stock analysis pre-flight assistant. Your task is to analyze the conversation history and extract the current stock analysis state preferences.\n"
             "Identify:\n"
-            "1. The active stock ticker symbol (e.g., AAPL, MSFT, UNH, etc.). If the user changes topic to a new stock, extract the new ticker. If they refer back to a previous stock, or continue talking about the same stock, keep that ticker. If no stock is being discussed, set ticker to null.\n"
+            "1. The active stock ticker symbol (e.g., AAPL, MSFT, UNH, etc.). If the user changes topic to a new stock, extract the new ticker. If they refer back to a previous stock, or continue talking about the same stock, keep that ticker. If no stock is being discussed or it is missing, set ticker to null. Tolerate lowercase/uppercase variations (e.g. unh -> UNH) and map company names to tickers.\n"
             "2. The requested financial metrics to display. Supported metrics: 'price' (Stock Price), 'pe_ratio' (P/E Ratio), 'eps' (EPS), 'revenue' (Revenue), 'free_cash_flow' (Free Cash Flow), 'shares_outstanding' (Shares Outstanding).\n"
             "   - If the user explicitly asks to show a metric (e.g., 'show FCF' or 'plot EPS') or hide one, adjust the list accordingly.\n"
             "   - If no metrics are specified, default to: ['price', 'pe_ratio'].\n"
             "3. The date range to view (Start Date and End Date). Capture these as explicit 'start_date' and 'end_date' values in YYYY-MM-DD format (or YYYY), relative to the current date 2026-07-20.\n"
             "   - If the user specifies a range (e.g., 'between 2016 and 2022', 'from 2008 to 2012'), map them to YYYY-MM-DD dates (e.g., '2016-01-01' and '2022-12-31').\n"
             "   - If the user specifies a relative range (e.g., 'last 3 years', '5Y'), compute the start date relative to 2026-07-20.\n"
-            "   - If not specified, set both start_date and end_date to null.\n\n"
-            "Output a single valid JSON object with the keys 'ticker', 'metrics', 'start_date', and 'end_date'. "
+            "   - If not specified, set both start_date and end_date to null.\n"
+            "4. Whether this is a stock charting/financial query. Set 'is_financial_query' to true if the user query is asking to plot, chart, or analyze stock metrics, even if the target stock ticker is missing or unrecognized. Otherwise set 'is_financial_query' to false.\n\n"
+            "Output a single valid JSON object with the keys 'ticker', 'is_financial_query', 'metrics', 'start_date', and 'end_date'. "
             "Example output:\n"
             "{\n"
             "  \"ticker\": \"UNH\",\n"
+            "  \"is_financial_query\": true,\n"
             "  \"metrics\": [\"price\", \"free_cash_flow\"],\n"
             "  \"start_date\": \"2016-01-01\",\n"
             "  \"end_date\": \"2022-12-31\"\n"
@@ -93,7 +95,7 @@ class Pipe:
                 model=self.valves.GEMINI_MODEL,
                 messages=preflight_messages,
                 temperature=0.0,
-                max_tokens=150
+                max_tokens=500
             )
             content = response.choices[0].message.content.strip()
             print(f"[PREFLIGHT] Raw model response: '{content}'")
@@ -122,6 +124,7 @@ class Pipe:
             
             return {
                 "ticker": ticker,
+                "is_financial_query": bool(data.get("is_financial_query", False)),
                 "metrics": metrics,
                 "start_date": start_date,
                 "end_date": end_date
@@ -130,6 +133,7 @@ class Pipe:
             print(f"Error during pre-flight preference extraction: {e}")
             return {
                 "ticker": None,
+                "is_financial_query": False,
                 "metrics": ["price", "pe_ratio"],
                 "start_date": None,
                 "end_date": None
@@ -570,6 +574,7 @@ class Pipe:
         selected_metrics = preferences["metrics"]
         start_date = preferences["start_date"]
         end_date = preferences["end_date"]
+        is_financial_query = preferences.get("is_financial_query", False)
         
         # Clean up stale/expired static HTML files matching cache TTL (24h)
         try:
@@ -690,15 +695,11 @@ class Pipe:
                 self.generate_chart_html(ticker, processed_metrics, selected_metrics, start_date, end_date)
                 import time
                 yield f'<iframe src="/static/chart-{ticker.lower()}.html?t={int(time.time())}" width="100%" height="430" style="border:none; border-radius:12px; background:#0f172a; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);"></iframe>\n\n'
+            elif is_financial_query:
+                # Ask user to clarify ticker if it was a charting request but ticker was missing
+                yield "I would be happy to plot those metrics for you! Could you please specify which stock ticker symbol (e.g. UNH, AAPL, NVDA) you want to analyze?"
             else:
-                # Then stream the text analysis only for general conversation (dormant)
-                response = client.chat.completions.create(
-                    model=self.valves.GEMINI_MODEL,
-                    messages=messages,
-                    stream=True
-                )
-                for chunk in response:
-                    if chunk.choices and chunk.choices[0].delta.content:
-                        yield chunk.choices[0].delta.content
+                # Yield faked general conversational completion for testing
+                yield "General chat response (Gemini text analysis disabled for testing)."
         except Exception as e:
             yield f"Error calling Gemini completion: {e}"

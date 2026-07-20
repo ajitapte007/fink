@@ -49,8 +49,8 @@ def verify_html_integrity(html_content: str, source_description: str):
     print(f"SUCCESS: HTML integrity check passed for {source_description}!")
 
 def run_local_simulation(query: str):
-    """Runs the pipeline logic in-memory using local Python import."""
-    print("\n=== RUNNING IN-MEMORY PYTHON SIMULATION ===")
+    """Runs the pipeline logic in-memory using local Python import. Returns accumulated response text."""
+    print(f"\n=== RUNNING IN-MEMORY PYTHON SIMULATION for '{query}' ===")
     from data_pipe import Pipe
     pipe = Pipe()
     
@@ -65,52 +65,44 @@ def run_local_simulation(query: str):
         "model": "gemini-2.5-flash"
     }
     
-    # Ensure clean slate before running simulation
-    local_chart_file = current_dir / "static" / "chart-unh.html"
-    if local_chart_file.exists():
-        local_chart_file.unlink()
-        
-    print(f"Executing pipeline in-memory for query: '{query}'...")
+    # Ensure clean slate before running simulation for UNH
+    if "UnitedHealth" in query or "unh" in query.lower():
+        local_chart_file = current_dir / "static" / "chart-unh.html"
+        if local_chart_file.exists():
+            local_chart_file.unlink()
+            
+    response_chunks = []
     try:
         generator = pipe.pipe(body)
         print("--- Stream Start ---")
         for chunk in generator:
             sys.stdout.write(chunk)
             sys.stdout.flush()
+            response_chunks.append(chunk)
         print("\n--- Stream End ---")
         
-        # Verify local file generation and integrity
-        if local_chart_file.exists():
-            with open(local_chart_file, "r") as f:
-                content = f.read()
-            verify_html_integrity(content, f"local static file ({local_chart_file})")
-        else:
-            print("FAIL: local simulation did not generate chart-unh.html!")
-            sys.exit(1)
+        response_text = "".join(response_chunks)
+        
+        # Verify local file generation and integrity for active state
+        if "UnitedHealth" in query or "unh" in query.lower():
+            if local_chart_file.exists():
+                with open(local_chart_file, "r") as f:
+                    content = f.read()
+                verify_html_integrity(content, f"local static file ({local_chart_file})")
+            else:
+                print("FAIL: local simulation did not generate chart-unh.html!")
+                sys.exit(1)
+                
+        return response_text
             
     except Exception as e:
         print(f"Error during in-memory simulation: {e}")
         sys.exit(1)
 
 def run_live_api_test(query: str):
-    """Sends a real HTTP POST request to the running Docker container API."""
-    print("\n=== RUNNING LIVE CONTAINER API VERIFICATION ===")
+    """Sends a real HTTP POST request to the running Docker container API. Returns accumulated response text."""
+    print(f"\n=== RUNNING LIVE CONTAINER API VERIFICATION for '{query}' ===")
     
-    # Verify static asset accessibility
-    static_url = "http://localhost:3000/static/chartUtils.js"
-    print(f"Verifying static asset serving at {static_url}...")
-    try:
-        static_req = urllib.request.Request(static_url, method="HEAD")
-        with urllib.request.urlopen(static_req) as resp:
-            if resp.status == 200:
-                print("SUCCESS: chartUtils.js is serving correctly at /static/chartUtils.js!")
-            else:
-                print(f"WARNING: Static asset check returned status {resp.status}")
-    except Exception as e:
-        print(f"ERROR: chartUtils.js static endpoint check failed: {e}")
-        print("Tip: Make sure the docker container is running (docker-compose up -d).")
-        sys.exit(1)
-
     url = "http://localhost:3000/api/chat/completions"
     headers = {
         "Authorization": "Bearer sk-fink-dev-test-key-12345",
@@ -126,9 +118,9 @@ def run_live_api_test(query: str):
     }
     
     data = json.dumps(payload).encode("utf-8")
-    print(f"Sending POST request to live container API at {url}...")
     req = urllib.request.Request(url, data=data, headers=headers, method="POST")
     
+    response_chunks = []
     try:
         with urllib.request.urlopen(req) as response:
             print("--- Stream Start ---")
@@ -147,38 +139,88 @@ def run_live_api_test(query: str):
                             if content:
                                 sys.stdout.write(content)
                                 sys.stdout.flush()
+                                response_chunks.append(content)
                     except Exception:
                         pass
             print("\n--- Stream End ---")
             
+            response_text = "".join(response_chunks)
+            
             # Fetch and verify the live generated static chart over HTTP
-            live_chart_url = "http://localhost:3000/static/chart-unh.html"
-            print(f"\nVerifying live compiled chart serving at {live_chart_url}...")
-            # Wait briefly for file system sync
-            time.sleep(1)
-            try:
-                with urllib.request.urlopen(live_chart_url) as resp:
-                    if resp.status == 200:
-                        content = resp.read().decode("utf-8")
-                        verify_html_integrity(content, f"live container served file ({live_chart_url})")
-                    else:
-                        print(f"FAIL: Fetching live chart returned status {resp.status}!")
-                        sys.exit(1)
-            except Exception as e:
-                print(f"FAIL: Failed to fetch live chart over HTTP: {e}")
-                sys.exit(1)
+            if "UnitedHealth" in query or "unh" in query.lower():
+                live_chart_url = "http://localhost:3000/static/chart-unh.html"
+                print(f"\nVerifying live compiled chart serving at {live_chart_url}...")
+                # Wait briefly for file system sync
+                time.sleep(1)
+                try:
+                    with urllib.request.urlopen(live_chart_url) as resp:
+                        if resp.status == 200:
+                            content = resp.read().decode("utf-8")
+                            verify_html_integrity(content, f"live container served file ({live_chart_url})")
+                        else:
+                            print(f"FAIL: Fetching live chart returned status {resp.status}!")
+                            sys.exit(1)
+                except Exception as e:
+                    print(f"FAIL: Failed to fetch live chart over HTTP: {e}")
+                    sys.exit(1)
+                    
+            return response_text
                 
     except Exception as e:
         print(f"Error during live container API call: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":
-    query = "Analyze UnitedHealth"
-    
     # Check command line argument for mode selection
     mode = sys.argv[1].lower() if len(sys.argv) > 1 else "both"
     
-    if mode in ("local", "both"):
-        run_local_simulation(query)
+    # Verify static asset accessibility first
     if mode in ("live", "both"):
-        run_live_api_test(query)
+        static_url = "http://localhost:3000/static/chartUtils.js"
+        print(f"Verifying static asset serving at {static_url}...")
+        try:
+            static_req = urllib.request.Request(static_url, method="HEAD")
+            with urllib.request.urlopen(static_req) as resp:
+                if resp.status == 200:
+                    print("SUCCESS: chartUtils.js is serving correctly at /static/chartUtils.js!")
+                else:
+                    print(f"WARNING: Static asset check returned status {resp.status}")
+        except Exception as e:
+            print(f"ERROR: chartUtils.js static endpoint check failed: {e}")
+            print("Tip: Make sure the docker container is running (docker-compose up -d).")
+            sys.exit(1)
+
+    # 1. Test query for Active State (with ticker UNH)
+    active_query = "show unh price and pe ratio over the last 10 years"
+    
+    # 2. Test query for Ticker Clarification Request (financial query, missing ticker)
+    clarify_query = "plot stock price and pe ratio"
+    
+    # 3. Test query for Dormant State (general conversation query)
+    dormant_query = "how is the weather?"
+    
+    if mode in ("local", "both"):
+        # Local Sim validations
+        r1 = run_local_simulation(active_query)
+        assert "/static/chart-unh.html" in r1, f"FAIL: Active state did not yield iframe. Response: {r1}"
+        
+        r2 = run_local_simulation(clarify_query)
+        assert "specify which stock ticker symbol" in r2, f"FAIL: Clarification prompt not triggered. Response: {r2}"
+        
+        r3 = run_local_simulation(dormant_query)
+        assert "Gemini text analysis disabled for testing" in r3, f"FAIL: Dormant faked state failed. Response: {r3}"
+        print("\nSUCCESS: All local simulation E2E checks passed!")
+        
+    if mode in ("live", "both"):
+        # Live Container API validations
+        r1 = run_live_api_test(active_query)
+        assert "/static/chart-unh.html" in r1, f"FAIL: Live active state did not yield iframe. Response: {r1}"
+        
+        r2 = run_live_api_test(clarify_query)
+        assert "specify which stock ticker symbol" in r2, f"FAIL: Live clarification prompt not triggered. Response: {r2}"
+        
+        r3 = run_live_api_test(dormant_query)
+        assert "Gemini text analysis disabled for testing" in r3, f"FAIL: Live dormant faked state failed. Response: {r3}"
+        print("\nSUCCESS: All live container API E2E checks passed!")
+        
+    print("\nALL E2E VERIFICATION CHECKS SUCCESSFULLY COMPLETED!")
