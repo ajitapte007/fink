@@ -1,1 +1,7 @@
-node_modules/ 
+node_modules/
+.env
+.pytest_cache/
+__pycache__/
+*.pyc
+*.db
+agent/.venv/

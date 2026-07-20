@@ -1,0 +1,36 @@
+services:
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui-analyst
+    ports:
+      - "3000:8080"
+    environment:
+      # Inject environment keys to bypass native responses API routing loops
+      - ENABLE_OAI_API_RESPONSES=False
+      # Globally whitelist frontend JS iframe rendering sandboxing
+      - ALLOW_IFRAME_SAME_ORIGIN=True
+      # Mount Python's package space path in sys.path (avoiding name collision with open_webui package)
+      - PYTHONPATH=/app/backend/open_webui_analyst
+      # Run in offline mode to prevent Hugging Face embedding model downloads hanging on startup
+      - OFFLINE_MODE=True
+      - RAG_EMBEDDING_MODEL_AUTO_UPDATE=False
+      - RAG_RERANKING_MODEL_AUTO_UPDATE=False
+      - WHISPER_MODEL_AUTO_UPDATE=False
+      # Enable API Keys for programmatic HTTP API verification
+      - ENABLE_API_KEYS=True
+      # Inject API Keys from host environment/.env
+      - ALPHAVANTAGE_API_KEY=${ALPHAVANTAGE_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    volumes:
+      # Mount named volume to persist main WebUI database, user assets, and SQLite cache db
+      - open-webui-data:/app/backend/data
+      # Mount custom pipe middleware into Open WebUI functions space
+      - ./open_webui/data_pipe.py:/app/backend/data/functions/data_pipe.py
+      # Mount backend module to an isolated path in container to avoid shadowing the built-in package
+      - ./open_webui:/app/backend/open_webui_analyst
+      # Mount chart utility asset into the correct static folder to serve to the frontend client
+      - ./open_webui/chartUtils.js:/app/backend/open_webui/static/chartUtils.js
+    restart: always
+
+volumes:
+  open-webui-data:

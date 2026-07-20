@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Financial Dashboard - AAPL</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: #0f172a;
+      color: #f8fafc;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      overflow: hidden;
+    }
+    .dashboard {
+      display: flex;
+      height: 100vh;
+      box-sizing: border-box;
+      padding: 15px;
+      gap: 15px;
+    }
+    .controls {
+      flex: 0 0 200px;
+      background: #1e293b;
+      padding: 15px;
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+    }
+    .section-title {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #94a3b8;
+      margin-bottom: 10px;
+      font-weight: 600;
+    }
+    .checkbox-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+    .control-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.02);
+      transition: background 0.2s;
+    }
+    .control-label:hover {
+      background: rgba(255, 255, 255, 0.05);
+    }
+    .btn-group {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+    }
+    .btn {
+      background: #334155;
+      border: none;
+      color: #cbd5e1;
+      padding: 6px;
+      font-size: 11px;
+      font-weight: 500;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.2s, color 0.2s;
+    }
+    .btn:hover {
+      background: #475569;
+      color: #f8fafc;
+    }
+    .btn.active {
+      background: #3b82f6;
+      color: #ffffff;
+    }
+    .timeframe-slider-container {
+        position: relative;
+        height: 20px;
+        margin-top: 10px;
+        margin-bottom: 5px;
+    }
+    .timeframe-slider {
+        position: absolute;
+        width: 100%;
+        top: 0;
+        pointer-events: none;
+        -webkit-appearance: none;
+        background: none;
+    }
+    .timeframe-slider::-webkit-slider-thumb {
+        pointer-events: auto;
+        -webkit-appearance: none;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: #3b82f6;
+        cursor: pointer;
+    }
+    .slider-track {
+        position: absolute;
+        height: 4px;
+        background: #475569;
+        top: 6px;
+        left: 0;
+        right: 0;
+    }
+    .chart-wrapper {
+      flex: 1;
+      background: #1e293b;
+      border-radius: 8px;
+      padding: 15px;
+      position: relative;
+      box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+    }
+  </style>
+</head>
+<body>
+  <div class="dashboard">
+    <div class="controls">
+      <div class="section-title">Metrics</div>
+      <div class="checkbox-group">
+        <label class="control-label" style="color: #60a5fa;"><input type="checkbox" id="metric-price" checked> Price</label>
+        <label class="control-label" style="color: #34d399;"><input type="checkbox" id="metric-pe_ratio" checked> P/E Ratio</label>
+        <label class="control-label" style="color: #fbbf24;"><input type="checkbox" id="metric-eps" > EPS</label>
+        <label class="control-label" style="color: #f472b6;"><input type="checkbox" id="metric-revenue" > Revenue</label>
+        <label class="control-label" style="color: #a78bfa;"><input type="checkbox" id="metric-free_cash_flow" > FCF</label>
+        <label class="control-label" style="color: #22d3ee;"><input type="checkbox" id="metric-shares_outstanding" > Shares</label>
+      </div>
+      <div class="section-title">Timeline</div>
+      <div class="btn-group" style="margin-bottom: 15px;">
+        <button class="btn active" onclick="setTimeline('all')">All</button>
+        <button class="btn" onclick="setTimeline('10')">10Y</button>
+        <button class="btn" onclick="setTimeline('5')">5Y</button>
+        <button class="btn" onclick="setTimeline('3')">3Y</button>
+        <button class="btn" onclick="setTimeline('1')">1Y</button>
+      </div>
+      <div class="timeframe-slider-container">
+        <div class="slider-track"></div>
+        <input type="range" id="leftSlider" class="timeframe-slider">
+        <input type="range" id="rightSlider" class="timeframe-slider">
+      </div>
+      <div style="display: flex; justify-content: space-between; font-size: 11px; color: #cbd5e1; margin-top: 8px;">
+        <span id="slider-start-label"></span>
+        <span id="slider-end-label"></span>
+      </div>
+    </div>
+    
+    <div class="chart-wrapper">
+      <canvas id="financialChart"></canvas>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    // Inlined chartUtils.js code
+    // chartUtils.js
+// Utilities for preparing chart data and configuration for Chart.js
+
+/**
+ * Prepares chart data for Chart.js from processed metrics.
+ */
+function prepareChartData(processedMetrics, selectedMetrics, metricsConfig) {
+    if (!processedMetrics) return { datasets: [], commonLabels: [] };
+    selectedMetrics = selectedMetrics || [];
+    const datasetsForChart = [];
+    // Price is still an object, so this is our source of truth for labels
+    const commonLabels = Object.keys(processedMetrics['price'] || {}).sort();
+
+    for (const metricId of selectedMetrics) {
+        const metricConfig = metricsConfig.find(m => m.id === metricId);
+        const data = processedMetrics[metricId];
+        if (!metricConfig || !data) {
+            continue;
+        }
+
+        let dataMap;
+        if (Array.isArray(data)) {
+            // Convert array data to a Map for efficient lookup
+            dataMap = new Map(data.map(item => [item.date, item.value]));
+        } else {
+            // Handle object-based data (like 'price')
+            dataMap = new Map(Object.entries(data));
+        }
+
+        const alignedData = commonLabels.map(label => dataMap.get(label) ?? null);
+
+        datasetsForChart.push({
+            label: metricConfig.label,
+            data: alignedData,
+            borderColor: metricConfig.color,
+            backgroundColor: metricConfig.color,
+            yAxisID: metricConfig.axis,
+            tension: 0.1,
+            fill: false,
+            spanGaps: true
+        });
+    }
+    return { datasets: datasetsForChart, commonLabels };
+}
+
+/**
+ * Generate a QuickChart Sankey chart URL for a cashflow overview.
+ * @param {Object} params
+ *   - input: string (e.g., 'totalRevenue')
+ *   - outputs: array of { label: string, value: number }
+ *   - inputLabel: string (optional, for display)
+ *   - outputLabels: array of string (optional, for display)
+ * @returns {string} QuickChart URL
+ */
+function getCashflowSankeyChartUrl({ input, outputs, inputLabel }) {
+    // Default label
+    const fromLabel = inputLabel || input;
+    // Build data array for QuickChart Sankey
+    const data = outputs
+        .filter(o => o.value !== null && o.value !== undefined && !isNaN(o.value))
+        .map(o => ({ from: fromLabel, to: o.label, flow: Math.abs(o.value) }));
+    const chartConfig = {
+        type: 'sankey',
+        data: {
+            datasets: [
+                {
+                    data: data
+                }
+            ]
+        },
+        options: {
+            title: {
+                display: true,
+                text: 'Cashflow Overview',
+                font: { size: 20 }
+            }
+        }
+    };
+    const encoded = encodeURIComponent(JSON.stringify(chartConfig));
+    return `https://quickchart.io/chart?c=${encoded}&version=3`;
+}
+
+/**
+ * Render a QuickChart image in a container by id.
+ * @param {string} containerId
+ * @param {string} chartUrl
+ */
+function renderQuickChartImage(containerId, chartUrl) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.innerHTML = '';
+    const img = document.createElement('img');
+    img.src = chartUrl;
+    img.style.maxWidth = '100%';
+    img.style.minHeight = '400px';
+    container.appendChild(img);
+}
+
+/**
+ * Render an interactive Sankey diagram using Plotly.js
+ * @param {string} containerId - The id of the container div
+ * @param {string} inputLabel - The label for the input/source node
+ * @param {Array<{label: string, value: number}>} outputs - Array of output nodes
+ */
+function renderPlotlySankeyChart(containerId, inputLabel, outputs) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    // Prepare nodes and links for Plotly Sankey
+    const labels = [inputLabel, ...outputs.map(o => o.label)];
+    const source = outputs.map(() => 0); // All from input node (index 0)
+    const target = outputs.map((_, i) => i + 1); // To each output node
+    const values = outputs.map(o => Math.abs(Number(o.value) || 0));
+    const data = [{
+        type: 'sankey',
+        orientation: 'h',
+        node: {
+            pad: 15,
+            thickness: 20,
+            line: { color: 'black', width: 0.5 },
+            label: labels,
+            color: ['#3b82f6', ...outputs.map(() => '#f59e42')]
+        },
+        link: {
+            source: source,
+            target: target,
+            value: values,
+            color: outputs.map(() => 'rgba(59,130,246,0.3)')
+        }
+    }];
+    const layout = {
+        font: { size: 14 },
+        autosize: true,
+        margin: { l: 0, r: 0, t: 10, b: 0 },
+        width: null,
+        height: 100
+    };
+    Plotly.react(container, data, layout, {responsive: true});
+}
+
+/**
+ * Render a multi-level Sankey diagram using Plotly.js
+ * @param {string} containerId - The id of the container div
+ * @param {Array<string>} nodes - Array of node labels
+ * @param {Array<{source: number, target: number, value: number}>} links - Array of links
+ */
+function renderPlotlySankeyChartMultiLevel(containerId, nodes, links) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const data = [{
+        type: 'sankey',
+        orientation: 'h',
+        node: {
+            pad: 15,
+            thickness: 20,
+            line: { color: 'black', width: 0.5 },
+            label: nodes,
+            color: nodes.map((_, i) => i === 0 ? '#3b82f6' : (i === 1 ? '#f59e42' : '#a3e635'))
+        },
+        link: {
+            source: links.map(l => l.source),
+            target: links.map(l => l.target),
+            value: links.map(l => Math.abs(Number(l.value) || 0)),
+            color: links.map(() => 'rgba(59,130,246,0.3)')
+        }
+    }];
+    const layout = {
+        font: { size: 14 },
+        autosize: true,
+        margin: { l: 0, r: 0, t: 10, b: 0 },
+        width: null,
+        height: 400
+    };
+    Plotly.react(container, data, layout, {responsive: true});
+}
+
+/**
+ * Dynamically inject timeframe slider CSS styles into the document head.
+ */
+function injectSliderStyles() {
+    if (document.getElementById('slider-styles-injected')) return;
+    const style = document.createElement('style');
+    style.id = 'slider-styles-injected';
+    style.innerHTML = `
+        .timeframe-slider-container {
+          position: relative;
+          height: 24px;
+          width: 100%;
+          display: flex;
+          align-items: center;
+          margin-top: 10px;
+          margin-bottom: 5px;
+        }
+        .slider-track {
+          position: absolute;
+          left: 0;
+          right: 0;
+          height: 6px;
+          background-color: #475569;
+          border-radius: 3px;
+          z-index: 1;
+        }
+        input[type="range"].timeframe-slider {
+          position: absolute;
+          left: 0;
+          width: 100%;
+          -webkit-appearance: none;
+          appearance: none;
+          background: transparent;
+          pointer-events: none;
+          margin: 0;
+          border: none;
+          z-index: 3;
+        }
+        input[type="range"].timeframe-slider::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          appearance: none;
+          pointer-events: all;
+          width: 14px;
+          height: 14px;
+          background-color: #3b82f6;
+          border-radius: 50%;
+          cursor: pointer;
+          border: 2px solid #1e293b;
+          box-shadow: 0 0 4px rgba(0, 0, 0, 0.15);
+          transition: transform 0.1s ease;
+        }
+        input[type="range"].timeframe-slider::-webkit-slider-thumb:hover {
+          transform: scale(1.15);
+        }
+        input[type="range"].timeframe-slider::-moz-range-thumb {
+          pointer-events: all;
+          width: 14px;
+          height: 14px;
+          background-color: #3b82f6;
+          border-radius: 50%;
+          cursor: pointer;
+          border: 2px solid #1e293b;
+          box-shadow: 0 0 4px rgba(0, 0, 0, 0.15);
+        }
+    `;
+    document.head.appendChild(style);
+}
+
+/**
+ * Setup and manage the double-ended timeline range slider.
+ */
+function setupDualSlider(startSliderId, endSliderId, trackClass, startLabelId, endLabelId, labels, onUpdate) {
+    const startSlider = document.getElementById(startSliderId);
+    const endSlider = document.getElementById(endSliderId);
+    const track = document.querySelector('.' + trackClass);
+    const startLabel = document.getElementById(startLabelId);
+    const endLabel = document.getElementById(endLabelId);
+    
+    if (!startSlider || !endSlider || !track) return null;
+    
+    const max = Math.max(0, labels.length - 1);
+    startSlider.min = 0;
+    startSlider.max = max;
+    startSlider.value = 0;
+    endSlider.min = 0;
+    endSlider.max = max;
+    endSlider.value = max;
+    
+    function updateUI() {
+        let val1 = parseInt(startSlider.value) || 0;
+        let val2 = parseInt(endSlider.value) || max;
+        
+        if (val1 > val2) {
+            [val1, val2] = [val2, val1];
+            startSlider.value = val1;
+            endSlider.value = val2;
+        }
+        
+        const pct1 = (val1 / max) * 100;
+        const pct2 = (val2 / max) * 100;
+        track.style.background = `linear-gradient(to right, #475569 ${pct1}%, #3b82f6 ${pct1}%, #3b82f6 ${pct2}%, #475569 ${pct2}%)`;
+        
+        if (labels.length > 0) {
+            if (startLabel) startLabel.innerText = labels[val1];
+            if (endLabel) endLabel.innerText = labels[val2];
+        }
+    }
+    
+    startSlider.addEventListener('input', () => {
+        let val1 = parseInt(startSlider.value) || 0;
+        let val2 = parseInt(endSlider.value) || max;
+        if (val1 > val2) {
+            startSlider.value = val2;
+        }
+        updateUI();
+        onUpdate(parseInt(startSlider.value), parseInt(endSlider.value));
+    });
+    
+    endSlider.addEventListener('input', () => {
+        let val1 = parseInt(startSlider.value) || 0;
+        let val2 = parseInt(endSlider.value) || max;
+        if (val2 < val1) {
+            endSlider.value = val1;
+        }
+        updateUI();
+        onUpdate(parseInt(startSlider.value), parseInt(endSlider.value));
+    });
+    
+    updateUI();
+    return {
+        updateRange: (sVal, eVal) => {
+            startSlider.value = sVal;
+            endSlider.value = eVal;
+            updateUI();
+        }
+    };
+}
+    
+    const processedMetrics = {"price": {}, "revenue": {}, "operating_income": {}, "net_income": {}, "free_cash_flow": {}, "roic": {}, "eps": {}, "pe_ratio": {}, "ps_ratio": {}, "shares_outstanding": {}, "dividends": {}};
+    const metricsConfig = [{"id": "price", "label": "Stock Price ($)", "color": "#3b82f6", "axis": "y"}, {"id": "pe_ratio", "label": "P/E Ratio", "color": "#10b981", "axis": "y1"}, {"id": "eps", "label": "EPS ($)", "color": "#f59e0b", "axis": "y1"}, {"id": "revenue", "label": "Revenue ($)", "color": "#ec4899", "axis": "y"}, {"id": "free_cash_flow", "label": "Free Cash Flow ($)", "color": "#8b5cf6", "axis": "y"}, {"id": "shares_outstanding", "label": "Shares Outstanding", "color": "#06b6d4", "axis": "y1"}];
+    const initialStartDate = "";
+    const initialEndDate = "";
+    
+    let chartInstance = null;
+    let commonLabelsGlobal = [];
+    for (const key in processedMetrics) {
+        const keys = Object.keys(processedMetrics[key]);
+        if (keys.length > commonLabelsGlobal.length) {
+            commonLabelsGlobal = keys.sort();
+        }
+    }
+    let sliderController = null;
+
+    function getSelectedMetrics() {
+        const selected = [];
+        if (document.getElementById('metric-price').checked) selected.push('price');
+        if (document.getElementById('metric-pe_ratio').checked) selected.push('pe_ratio');
+        if (document.getElementById('metric-eps').checked) selected.push('eps');
+        if (document.getElementById('metric-revenue').checked) selected.push('revenue');
+        if (document.getElementById('metric-free_cash_flow').checked) selected.push('free_cash_flow');
+        if (document.getElementById('metric-shares_outstanding').checked) selected.push('shares_outstanding');
+        return selected;
+    }
+
+    function formatNumber(value) {
+        if (value === null || value === undefined) return '';
+        const absVal = Math.abs(value);
+        if (absVal >= 1e9) return (value / 1e9).toFixed(1) + "B";
+        if (absVal >= 1e6) return (value / 1e6).toFixed(1) + "M";
+        if (absVal >= 1e3) return (value / 1e3).toFixed(1) + "K";
+        return value.toFixed(1);
+    }
+
+    function formatTooltipVal(val, label) {
+        if (val === null || val === undefined) return '';
+        const isCurrency = label.includes("$") || label.toLowerCase().includes("revenue") || label.toLowerCase().includes("cash flow") || label.toLowerCase().includes("price");
+        const prefix = isCurrency ? "$" : "";
+        const absVal = Math.abs(val);
+        if (absVal >= 1e9) return prefix + (val / 1e9).toFixed(2) + "B";
+        if (absVal >= 1e6) return prefix + (val / 1e6).toFixed(2) + "M";
+        if (absVal >= 1e3) return prefix + (val / 1e3).toFixed(2) + "K";
+        return prefix + val.toFixed(2);
+    }
+
+    function findClosestDateIndex(labels, targetDateStr) {
+        const targetDate = new Date(targetDateStr);
+        if (isNaN(targetDate)) return -1;
+        
+        let closestIdx = -1;
+        let minDiff = Infinity;
+        for (let i = 0; i < labels.length; i++) {
+            const d = new Date(labels[i]);
+            const diff = Math.abs(d - targetDate);
+            if (diff < minDiff) {
+                minDiff = diff;
+                closestIdx = i;
+            }
+        }
+        return closestIdx;
+    }
+
+    function updateChart() {
+        const selectedMetrics = getSelectedMetrics();
+        const { datasets, commonLabels } = prepareChartData(processedMetrics, selectedMetrics, metricsConfig);
+        
+        if (!commonLabelsGlobal.length || commonLabelsGlobal.length !== commonLabels.length) {
+            commonLabelsGlobal = commonLabels;
+        }
+
+        const startSlider = document.getElementById('leftSlider');
+        const endSlider = document.getElementById('rightSlider');
+        const startIdx = startSlider ? (parseInt(startSlider.value) || 0) : 0;
+        const endIdx = endSlider ? (parseInt(endSlider.value) || (commonLabels.length - 1)) : (commonLabels.length - 1);
+        
+        let filteredLabels = commonLabels.slice(startIdx, endIdx + 1);
+        let filteredDatasets = datasets.map(ds => ({ 
+            ...ds, 
+            data: ds.data.slice(startIdx, endIdx + 1) 
+        }));
+        
+        if (chartInstance) {
+            chartInstance.data.labels = filteredLabels;
+            chartInstance.data.datasets = filteredDatasets;
+            chartInstance.update();
+        } else {
+            const ctx = document.getElementById("financialChart").getContext("2d");
+            chartInstance = new Chart(ctx, {
+                type: "line",
+                data: {
+                    labels: filteredLabels,
+                    datasets: filteredDatasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: "index", intersect: false },
+                    scales: {
+                        y: { 
+                            type: "linear", position: "left",
+                            ticks: { color: "#94a3b8", callback: v => "$" + formatNumber(v) },
+                            grid: { color: "rgba(148, 163, 184, 0.1)" }
+                        },
+                        y1: { 
+                            type: "linear", position: "right",
+                            ticks: { color: "#94a3b8", callback: v => formatNumber(v) },
+                            grid: { drawOnChartArea: false }
+                        },
+                        x: { ticks: { color: "#94a3b8" }, grid: { color: "rgba(148, 163, 184, 0.1)" } }
+                    },
+                    plugins: {
+                        legend: { labels: { color: "#f8fafc" } },
+                        tooltip: {
+                            callbacks: {
+                                label: ctx => ctx.dataset.label + ': ' + formatTooltipVal(ctx.parsed.y, ctx.dataset.label)
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    }
+
+    function setTimeline(timeline) {
+        if (!commonLabelsGlobal.length) return;
+        const total = commonLabelsGlobal.length;
+        let sIdx = 0;
+        let eIdx = total - 1;
+        
+        if (timeline !== 'all') {
+            const years = parseInt(timeline);
+            const latestDate = new Date(commonLabelsGlobal[total - 1]);
+            const cutoffDate = new Date(latestDate);
+            cutoffDate.setFullYear(latestDate.getFullYear() - years);
+            
+            sIdx = commonLabelsGlobal.findIndex(d => new Date(d) >= cutoffDate);
+            if (sIdx === -1) sIdx = 0;
+        }
+        
+        if (sliderController) {
+            sliderController.updateRange(sIdx, eIdx);
+        }
+        
+        document.querySelectorAll('.btn-group .btn').forEach(btn => {
+            btn.classList.remove('active');
+            if (btn.getAttribute('onclick').includes(timeline)) {
+                btn.classList.add('active');
+            }
+        });
+        updateChart();
+    }
+
+
+
+    document.querySelectorAll('.checkbox-group input').forEach(input => {
+        input.addEventListener('change', updateChart);
+    });
+    
+    injectSliderStyles();
+    sliderController = setupDualSlider(
+        'leftSlider',
+        'rightSlider',
+        'slider-track',
+        'slider-start-label',
+        'slider-end-label',
+        commonLabelsGlobal,
+        (sIdx, eIdx) => {
+            document.querySelectorAll('.btn-group .btn').forEach(btn => btn.classList.remove('active'));
+            updateChart();
+        }
+    );
+    updateChart();
+
+    if (initialStartDate || initialEndDate) {
+        let sIdx = 0;
+        let eIdx = commonLabelsGlobal.length - 1;
+        if (initialStartDate) {
+            const idx = findClosestDateIndex(commonLabelsGlobal, initialStartDate);
+            if (idx !== -1) sIdx = idx;
+        }
+        if (initialEndDate) {
+            const idx = findClosestDateIndex(commonLabelsGlobal, initialEndDate);
+            if (idx !== -1) eIdx = idx;
+        }
+        sliderController.updateRange(sIdx, eIdx);
+        updateChart();
+    } else {
+        setTimeline('all');
+    }
+  </script>
+</body>
+</html>
