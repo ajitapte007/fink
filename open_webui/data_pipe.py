@@ -583,15 +583,16 @@ class Pipe:
             if not static_dir.exists():
                 static_dir = current_dir / "static"
             if static_dir.exists():
-                db_path = Path("/app/backend/data/alphavantage_cache.db")
-                if not db_path.exists():
-                    db_path = current_dir / "alphavantage_cache.db"
+                from alphavantage.fetch_utils import get_db_path
+                db_path = get_db_path()
                 
                 if db_path.exists():
-                    conn = sqlite3.connect(db_path)
+                    import time
+                    conn = sqlite3.connect(str(db_path))
                     cursor = conn.cursor()
                     # Keep only tickers with a fresh cache entry (< 24 hours old)
-                    cursor.execute("SELECT ticker FROM cache WHERE timestamp >= datetime('now', '-24 hours')")
+                    cutoff = time.time() - 24 * 3600
+                    cursor.execute("SELECT DISTINCT symbol FROM av_cache WHERE timestamp >= ?", (cutoff,))
                     fresh_tickers = {row[0].lower() for row in cursor.fetchall()}
                     conn.close()
                     
