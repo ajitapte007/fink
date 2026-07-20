@@ -568,6 +568,9 @@ class Pipe:
         if av_key:
             os.environ["ALPHAVANTAGE_API_KEY"] = av_key
             
+        # Yield first progress indicator to reduce perceived latency
+        yield "🔍 Checking request intent and extracting stock preferences...\n\n"
+
         # 1. Pre-flight Preference Extraction (captures ticker, metrics list, and date range bounds)
         preferences = self.extract_user_preferences(messages, gemini_key)
         ticker = preferences["ticker"]
@@ -575,6 +578,11 @@ class Pipe:
         start_date = preferences["start_date"]
         end_date = preferences["end_date"]
         is_financial_query = preferences.get("is_financial_query", False)
+
+        # Yield ticker identification details if found
+        if ticker:
+            yield f"📈 Stock ticker identified: **{ticker.upper()}** (Metrics: {', '.join(selected_metrics)})\n\n"
+            yield "🔄 Retrieving historical financials and validating cache...\n\n"
         
         # Clean up stale/expired static HTML files matching cache TTL (24h)
         cleanup_error = None
@@ -643,6 +651,9 @@ class Pipe:
                         if val is not None:
                             processed_metrics[metric_key][date_str] = val
                             
+                # Yield data retrieval progress
+                yield "📊 Historical financials retrieved and aligned. Compiling interactive chart...\n\n"
+                
                 # Format Data Override Payload
                 override_payload = {
                     "ticker": ticker,
@@ -703,6 +714,7 @@ class Pipe:
 
             # Instantly append the interactive Chart.js HTML block from Python FIRST
             if is_active:
+                yield "✨ Chart compiled. Rendering visualization dashboard...\n\n"
                 self.generate_chart_html(ticker, processed_metrics, selected_metrics, start_date, end_date)
                 import time
                 yield f'<iframe src="/static/chart-{ticker.lower()}.html?t={int(time.time())}" width="100%" height="430" style="border:none; border-radius:12px; background:#0f172a; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);"></iframe>\n\n'
