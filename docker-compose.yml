@@ -30,6 +30,7 @@ services:
       - ./open_webui:/app/backend/open_webui_analyst
       # Mount chart utility asset into the correct static folder to serve to the frontend client
       - ./open_webui/chartUtils.js:/app/backend/open_webui/static/chartUtils.js
+      - ./open_webui/static/chart.js:/app/backend/open_webui/static/chart.js
     restart: always
 
 volumes:

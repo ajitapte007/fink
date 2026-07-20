@@ -332,7 +332,7 @@ class Pipe:
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="/static/chart.js"></script>
   <script>
     // Inlined chartUtils.js code
     {chart_utils_code}

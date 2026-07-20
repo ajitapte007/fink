@@ -46,6 +46,11 @@ def verify_html_integrity(html_content: str, source_description: str):
         print(f"FAIL: Chart.js initialization code ('new Chart') not found in {source_description}!")
         sys.exit(1)
         
+    # 5. Check for same-origin local Chart.js serving tag
+    if "/static/chart.js" not in html_content:
+        print(f"FAIL: Same-origin local Chart.js script tag not found in {source_description}!")
+        sys.exit(1)
+        
     print(f"SUCCESS: HTML integrity check passed for {source_description}!")
 
 def run_local_simulation(query: str):
@@ -176,19 +181,21 @@ if __name__ == "__main__":
     
     # Verify static asset accessibility first
     if mode in ("live", "both"):
-        static_url = "http://localhost:3000/static/chartUtils.js"
-        print(f"Verifying static asset serving at {static_url}...")
-        try:
-            static_req = urllib.request.Request(static_url, method="HEAD")
-            with urllib.request.urlopen(static_req) as resp:
-                if resp.status == 200:
-                    print("SUCCESS: chartUtils.js is serving correctly at /static/chartUtils.js!")
-                else:
-                    print(f"WARNING: Static asset check returned status {resp.status}")
-        except Exception as e:
-            print(f"ERROR: chartUtils.js static endpoint check failed: {e}")
-            print("Tip: Make sure the docker container is running (docker-compose up -d).")
-            sys.exit(1)
+        # Verify both static assets: chartUtils.js and chart.js
+        for asset in ("chartUtils.js", "chart.js"):
+            static_url = f"http://localhost:3000/static/{asset}"
+            print(f"Verifying static asset serving at {static_url}...")
+            try:
+                static_req = urllib.request.Request(static_url, method="HEAD")
+                with urllib.request.urlopen(static_req) as resp:
+                    if resp.status == 200:
+                        print(f"SUCCESS: {asset} is serving correctly at /static/{asset}!")
+                    else:
+                        print(f"WARNING: Static asset check for {asset} returned status {resp.status}")
+            except Exception as e:
+                print(f"ERROR: {asset} static endpoint check failed: {e}")
+                print("Tip: Make sure the docker container is running (docker-compose up -d).")
+                sys.exit(1)
 
     # 1. Test query for Active State (with ticker UNH)
     active_query = "show unh price and pe ratio over the last 10 years"
