@@ -318,8 +318,8 @@ class Pipe:
       </div>
       <div class="timeframe-slider-container">
         <div class="slider-track"></div>
-        <input type="range" id="leftSlider" class="timeframe-slider">
-        <input type="range" id="rightSlider" class="timeframe-slider">
+        <input type="range" id="leftSlider" class="timeframe-slider" min="0" max="1000" value="0">
+        <input type="range" id="rightSlider" class="timeframe-slider" min="0" max="1000" value="1000">
       </div>
       <div style="display: flex; justify-content: space-between; font-size: 11px; color: #cbd5e1; margin-top: 8px;">
         <span id="slider-start-label"></span>
@@ -522,7 +522,7 @@ class Pipe:
             const idx = findClosestDateIndex(commonLabelsGlobal, initialEndDate);
             if (idx !== -1) eIdx = idx;
         }}
-        sliderController.updateRange(sIdx, eIdx);
+        if (sliderController) sliderController.updateRange(sIdx, eIdx);
         updateChart();
     }} else {{
         setTimeline('all');

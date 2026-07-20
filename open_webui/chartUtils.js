@@ -8,8 +8,19 @@ export function prepareChartData(processedMetrics, selectedMetrics, metricsConfi
     if (!processedMetrics) return { datasets: [], commonLabels: [] };
     selectedMetrics = selectedMetrics || [];
     const datasetsForChart = [];
-    // Price is still an object, so this is our source of truth for labels
-    const commonLabels = Object.keys(processedMetrics['price'] || {}).sort();
+    
+    // Find the longest array/object of date keys across all metrics
+    let commonLabels = [];
+    for (const key in processedMetrics) {
+        if (processedMetrics[key]) {
+            const keys = Array.isArray(processedMetrics[key]) 
+                ? processedMetrics[key].map(item => item.date) 
+                : Object.keys(processedMetrics[key]);
+            if (keys.length > commonLabels.length) {
+                commonLabels = keys.sort();
+            }
+        }
+    }
 
     for (const metricId of selectedMetrics) {
         const metricConfig = metricsConfig.find(m => m.id === metricId);
