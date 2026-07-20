@@ -577,6 +577,7 @@ class Pipe:
         is_financial_query = preferences.get("is_financial_query", False)
         
         # Clean up stale/expired static HTML files matching cache TTL (24h)
+        cleanup_error = None
         try:
             current_dir = Path(__file__).parent.resolve()
             static_dir = Path("/app/backend/open_webui/static")
@@ -606,9 +607,11 @@ class Pipe:
                                 pass
         except Exception as e:
             print(f"Error during static files cleanup: {e}")
+            cleanup_error = str(e)
 
         # Determine query state (Active vs Dormant)
         is_active = ticker is not None
+        pipeline_error = None
         
         if is_active:
             print(f"Active State triggered for ticker: {ticker}")
@@ -676,11 +679,8 @@ class Pipe:
                     
             except Exception as e:
                 print(f"Error executing active due diligence pipeline: {e}")
-                # Fall back to dormant flow if data fetching/processing fails, appending a warning to the user message
-                for msg in reversed(messages):
-                    if msg["role"] == "user":
-                        msg["content"] += f"\n\n[Warning: Financial data pipeline failed to fetch. Falling back to base LLM response. Error: {e}]"
-                        break
+                pipeline_error = str(e)
+                is_active = False # Fall back to dormant/error display
         else:
             print("Dormant State triggered (general conversation).")
 
@@ -691,6 +691,16 @@ class Pipe:
         )
         
         try:
+            # Yield preflight warning if any
+            if preferences.get("error"):
+                yield f"[Warning: Pre-flight stock preference extraction had a connection error: {preferences['error']}. Falling back to default settings.]\n\n"
+            # Yield cleanup warning if any
+            if cleanup_error:
+                yield f"[Warning: Disk cleanup failed for stale static chart files: {cleanup_error}]\n\n"
+            # Yield pipeline error if any
+            if pipeline_error:
+                yield f"[Error: Financial data pipeline failed to fetch for ticker {ticker or 'Unknown'}. Details: {pipeline_error}]\n\n"
+
             # Instantly append the interactive Chart.js HTML block from Python FIRST
             if is_active:
                 self.generate_chart_html(ticker, processed_metrics, selected_metrics, start_date, end_date)
@@ -701,6 +711,7 @@ class Pipe:
                 yield "I would be happy to plot those metrics for you! Could you please specify which stock ticker symbol (e.g. UNH, AAPL, NVDA) you want to analyze?"
             else:
                 # Yield faked general conversational completion for testing
-                yield "General chat response (Gemini text analysis disabled for testing)."
+                if not preferences.get("error") and not pipeline_error:
+                    yield "General chat response (Gemini text analysis disabled for testing)."
         except Exception as e:
-            yield f"Error calling Gemini completion: {e}"
+            yield f"[Error: Pipeline exception: {e}]"
