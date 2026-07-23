@@ -57,4 +57,109 @@ The project is organized into three main files:
 *   CSS3 with [Tailwind CSS](https://tailwindcss.com/)
 *   Vanilla JavaScript (ES6+)
 *   [Chart.js](https://www.chartjs.org/) for charting
-*   [Alpha Vantage API](https://www.alphavantage.co/) for financial data 
+*   [Alpha Vantage API](https://www.alphavantage.co/) for financial data
+
+---
+
+## Backend Architecture & MCP Server
+
+Fink implements a Model Context Protocol (MCP) server that exposes optimized tools for stock financial research and visualization to LLM agents (such as Open WebUI).
+
+### 1. Offline-First Read-Through Cache Flow
+
+To minimize network calls and API rate limits, the data retriever implements a read-through database caching layer:
+
+```mermaid
+graph TD
+    A[Tool Call / Data Request] --> B{Check SQLite DB Cache}
+    B -- Valid Hit (Not Expired) --> C[Return Cached Data]
+    B -- Cache Miss / Expired --> D{Is mock_data Enabled?}
+    D -- Yes --> E{Check Seed JSON Cache}
+    E -- Found --> F[Write to SQLite DB Cache]
+    F --> C
+    E -- Not Found --> G[Fetch from Alpha Vantage API]
+    D -- No --> G
+    G --> H[Write to SQLite DB Cache]
+    H --> C
+```
+
+---
+
+### 2. Data Schemas & Formats
+
+#### A. Raw Alpha Vantage Response
+This is the standard response structure returned by the live Alpha Vantage endpoints for financial statements (`INCOME_STATEMENT`, `BALANCE_SHEET`, `CASH_FLOW`):
+```json
+{
+  "symbol": "UNH",
+  "annualReports": [
+    {
+      "fiscalDateEnding": "2023-12-31",
+      "reportedCurrency": "USD",
+      "totalRevenue": "371532000000",
+      "netIncome": "22381000000",
+      ...
+    }
+  ],
+  "quarterlyReports": [ ... ]
+}
+```
+
+#### B. Seed Cache (`mcp/data/local_av_cache/{ticker}.json`)
+A static, unified pre-seeded JSON file containing full response payloads mapped by function names to allow complete local testing without hitting API rate limits:
+```json
+{
+  "OVERVIEW": { "Symbol": "UNH", "AssetType": "Common Stock", ... },
+  "INCOME_STATEMENT": { "symbol": "UNH", "annualReports": [...] },
+  "BALANCE_SHEET": { "symbol": "UNH", "annualReports": [...] },
+  "CASH_FLOW": { "symbol": "UNH", "annualReports": [...] },
+  "TIME_SERIES_MONTHLY_ADJUSTED": {
+    "Meta Data": { ... },
+    "Monthly Adjusted Time Series": { ... }
+  }
+}
+```
+
+#### C. SQLite Cache Database (`mcp/data/cache.db`)
+Stores individual function payloads along with tracking metadata under the `av_cache` table:
+* **Table Schema**:
+  ```sql
+  CREATE TABLE IF NOT EXISTS av_cache (
+      symbol TEXT,
+      function TEXT,
+      data TEXT,         -- Raw JSON string matching Alpha Vantage format
+      timestamp REAL,    -- Time loaded (Epoch seconds)
+      expires_at REAL,   -- TTL Expiration Time (Epoch seconds)
+      source TEXT,       -- 'mock' (local seed file) or 'api' (Alpha Vantage network)
+      PRIMARY KEY (symbol, function)
+  );
+  ```
+
+#### D. Aligned Chart Output (`get_aligned_historical_data`)
+The Python processor aligns the raw monthly price series with interpolated quarterly fundamentals and returns a chronological list of `ChartDataPoint` objects smoothed via a 3-month Simple Moving Average (SMA). 
+
+Each data point follows this Python NamedTuple structure:
+```python
+class ChartDataPoint(NamedTuple):
+    date: str                  # Chronological date label: "YYYY-MM-DD"
+    price: float               # Split-adjusted closing stock price
+    revenue: Optional[float]   # Smoothed annual-aligned total revenue
+    operating_income: Optional[float]
+    net_income: Optional[float]
+    free_cash_flow: Optional[float]      # calculated: operating_cash_flow - capex
+    roic: Optional[float]                # Return on Invested Capital (%)
+    eps: Optional[float]                 # Earnings Per Share
+    capex: Optional[float]               # Capital expenditures
+    operating_cash_flow: Optional[float]
+    pe_ratio: Optional[float]            # Valuation: Price / EPS
+    ps_ratio: Optional[float]            # Valuation: Price / (Revenue / Shares)
+    pfcf_ratio: Optional[float]           # Valuation: Price / (FCF / Shares)
+    pocf_ratio: Optional[float]           # Valuation: Price / (OCF / Shares)
+    shares_outstanding: Optional[float]
+    dividends: float                     # Dividend payment size
+    dividend_yield: Optional[float]      # Dividend yield (%)
+    payout_ratio_fcf: Optional[float]    # Dividend / Free Cash Flow (%)
+    payout_ratio_ocf: Optional[float]    # Dividend / Operating Cash Flow (%)
+```
+This list is formatted into a lightweight JSON array under 5KB and passed directly to the browser visualization iframe, preventing any large payload bottlenecks.
+ 
