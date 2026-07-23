@@ -332,7 +332,7 @@ class Pipe:
     </div>
   </div>
 
-  <script src="/static/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script>
   <script>
     // Inlined chartUtils.js code
     {chart_utils_code}
@@ -721,8 +721,18 @@ class Pipe:
             if is_active:
                 yield "✨ Chart compiled. Rendering visualization dashboard...\n\n"
                 self.generate_chart_html(ticker, processed_metrics, selected_metrics, start_date, end_date)
-                import time
-                yield f'<iframe src="/static/chart-{ticker.lower()}.html?t={int(time.time())}" width="100%" height="430" style="border:none; border-radius:12px; background:#0f172a; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>\n\n'
+                
+                # Read the compiled HTML file and yield it inside a markdown HTML code block to trigger Svelte Artifacts
+                static_dest = Path("/app/backend/open_webui/static")
+                if not static_dest.exists():
+                    static_dest = Path(__file__).parent.resolve() / "static"
+                html_file = static_dest / f"chart-{ticker.lower()}.html"
+                try:
+                    with open(html_file, "r") as f:
+                        chart_html = f.read()
+                    yield f"```html\n{chart_html}\n```\n\n"
+                except Exception as e:
+                    yield f"[Error: Failed to read compiled chart HTML: {e}]\n\n"
             elif is_financial_query:
                 # Ask user to clarify ticker if it was a charting request but ticker was missing
                 yield "I would be happy to plot those metrics for you! Could you please specify which stock ticker symbol (e.g. UNH, AAPL, NVDA) you want to analyze?"
