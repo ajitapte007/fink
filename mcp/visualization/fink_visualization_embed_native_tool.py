@@ -19,6 +19,8 @@ class Tools:
         selected_metrics: Optional[List[str]] = None,
         start_year: Optional[int] = None,
         end_year: Optional[int] = None,
+        normalize: Optional[bool] = False,
+        growth_rate_yoy: Optional[bool] = False,
         __event_emitter__=None
     ) -> str:
         """
@@ -28,6 +30,8 @@ class Tools:
         :param selected_metrics: List of metrics (e.g. ['price', 'pe_ratio']).
         :param start_year: Start year bound for the timeline (e.g. 2018).
         :param end_year: End year bound for the timeline (e.g. 2026).
+        :param normalize: Set to True to normalize chart data to show percentage growth from starting baseline. Set to False for absolute values. Default is False. At most one of 'normalize' or 'growth_rate_yoy' should be True.
+        :param growth_rate_yoy: Set to True to calculate and display the Year-over-Year (YoY) percentage rate of growth change for all metrics. Set to False for absolute values. Default is False. At most one of 'normalize' or 'growth_rate_yoy' should be True.
         """
         url = "http://host.docker.internal:8001/visualization_internal"
         try:
@@ -40,7 +44,9 @@ class Tools:
             "ticker": ticker,
             "selected_metrics": selected_metrics or ["price"],
             "start_year": start_year,
-            "end_year": end_year
+            "end_year": end_year,
+            "normalize": normalize,
+            "growth_rate_yoy": growth_rate_yoy
         }
         
         try:

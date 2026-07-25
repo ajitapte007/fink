@@ -7,3 +7,5 @@ __pycache__/
 agent/.venv/
 .DS_Store
 open_webui/static/chart-*.html
+venv/
+open_webui/static/*-data.json

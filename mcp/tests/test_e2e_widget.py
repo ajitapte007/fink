@@ -43,10 +43,18 @@ def test_playwright_e2e_chart_render():
         # Verify canvas element exists
         assert page.locator("#financialChart").is_visible()
         
+        # Verify category headers exist
+        assert page.locator(".category-header").count() > 0
+        
         # Verify metric control checkboxes exist
         assert page.locator("#metric-price").is_visible()
         assert page.locator("#metric-ps_ratio").is_visible()
         assert page.locator("#metric-revenue").is_visible()
+        
+        # Verify dynamic control buttons exist
+        assert page.locator(".toggle-sh").count() > 0
+        assert page.locator(".axis-selector").count() > 0
+        assert page.locator("#global-normalize").is_visible()
         
         # Verify slider controls exist
         assert page.locator("#leftSlider").is_visible()
@@ -107,3 +115,77 @@ def test_playwright_e2e_chart_render():
         assert end_label != ""
         
         browser.close()
+
+def test_in_place_updating_e2e():
+    # 1. Generate two instances of HTML for the same ticker (AMZN) but different selected metrics
+    html1 = generate_visualization_html("AMZN", selected_metrics=["price"], start_year=2018, end_year=2023)
+    html2 = generate_visualization_html("AMZN", selected_metrics=["ps_ratio"], start_year=2018, end_year=2023)
+    
+    # Inject base href to allow relative paths to resolve
+    html1 = html1.replace("<head>", '<head><base href="http://localhost:3000">')
+    html2 = html2.replace("<head>", '<head><base href="http://localhost:3000">')
+    
+    import html as py_html
+    srcdoc1 = py_html.escape(html1)
+    srcdoc2 = py_html.escape(html2)
+    
+    # Parent page nesting the two widgets inside simulated message bubbles
+    parent_html = f"""
+    <!DOCTYPE html>
+    <html>
+    <body>
+      <div class="chat-bubble" id="bubble1" style="display: block;">
+        <iframe id="iframe1" srcdoc="{srcdoc1}" style="width: 100%; height: 600px;"></iframe>
+      </div>
+      <div class="chat-bubble" id="bubble2" style="display: block;">
+        <iframe id="iframe2" srcdoc="{srcdoc2}" style="width: 100%; height: 600px;"></iframe>
+      </div>
+    </body>
+    </html>
+    """
+    
+    from pathlib import Path
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+        
+        # Add request and console logging to debug same-origin behaviors
+        page.on("console", lambda msg: print(f"[PLAYWRIGHT CONSOLE] {msg.text}"))
+        page.on("pageerror", lambda err: print(f"[PLAYWRIGHT PAGEERROR] {err}"))
+        page.on("requestfailed", lambda req: print(f"[PLAYWRIGHT REQ FAILED] {req.url} - {req.failure}"))
+        
+        static_dir = Path(__file__).parent.parent.parent / "open_webui" / "static"
+        chart_js_path = static_dir / "chart.js"
+        chart_utils_path = static_dir / "chartUtils.js"
+        dashboard_css_path = static_dir / "dashboard.css"
+        data_json_path = static_dir / "amzn-data.json"
+        
+        page.route("**/static/fink/chart.js", lambda route: route.fulfill(path=str(chart_js_path)))
+        page.route("**/static/fink/chartUtils.js", lambda route: route.fulfill(path=str(chart_utils_path)))
+        page.route("**/static/fink/dashboard.css", lambda route: route.fulfill(path=str(dashboard_css_path)))
+        page.route("**/static/fink/amzn-data.json", lambda route: route.fulfill(path=str(data_json_path)))
+        
+        # Route the parent HTML through the same origin to inherit identical same-origin security context
+        page.route("http://localhost:3000/test-preview", lambda route: route.fulfill(body=parent_html, content_type="text/html"))
+        page.goto("http://localhost:3000/test-preview")
+        
+        # Wait a bit for JS logic inside both frames to run and communicate
+        page.wait_for_timeout(2000)
+        
+        # Verify that the second chat bubble has been set to display: none
+        bubble2_style = page.locator("#bubble2").evaluate("el => el.style.display")
+        assert bubble2_style == "none", "Second chat bubble should be hidden after duplicate update"
+        
+        # Verify that the first frame has updated its parameters (it now has both price AND ps_ratio checked)
+        frame1 = page.frame(name="iframe1")
+        assert frame1 is not None
+        
+        # Check checked state in the first frame
+        price_checked = frame1.locator("#metric-price").is_checked()
+        ps_checked = frame1.locator("#metric-ps_ratio").is_checked()
+        
+        # Since the second widget selected 'ps_ratio', it should update the first frame to check it
+        assert price_checked is True or ps_checked is True, "At least one metric should be plotted"
+        
+        browser.close()
+

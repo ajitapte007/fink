@@ -1,6 +1,6 @@
 import { processFinancialData, getNestedValue, calculateTTM, interpolateData, findValidDate, roundDateToEndOfMonth, calculateDerivedMetric, formatLargeNumber, toPercentOfStartValue } from './processUtils.js';
 import { prepareChartData } from './chartUtils.js';
-import { fetchFinancialData, addToCache, getFromCache } from './fetchUtils.js';
+import { fetchFinancialData, addToCache, getFromCache, fetchLatestYahooPrice } from './fetchUtils.js';
 import { getCashflowSankeyChartUrl, renderQuickChartImage, renderPlotlySankeyChart, renderPlotlySankeyChartMultiLevel } from './chartUtils.js';
 
 // DOM Elements for new UI
@@ -626,6 +626,41 @@ loadBtn.addEventListener('click', function() {
     fetchTabData(activeTab);
 });
 
+const activePerShareMetrics = new Set();
+
+function updateCompanyMetadataPanel(ticker, latestYahoo, rawData) {
+    const overview = rawData?.['OVERVIEW'] || {};
+    const sector = overview.Sector || 'N/A';
+    const industry = overview.Industry || 'N/A';
+    const country = overview.Country || 'N/A';
+    const shares = parseFloat(overview.SharesOutstanding) || 0;
+    
+    const price = latestYahoo?.price || null;
+    let marketCapStr = 'N/A';
+    if (price && shares > 0) {
+        const mcap = price * shares;
+        if (mcap >= 1e12) marketCapStr = `$${(mcap / 1e12).toFixed(2)}T`;
+        else if (mcap >= 1e9) marketCapStr = `$${(mcap / 1e9).toFixed(2)}B`;
+        else if (mcap >= 1e6) marketCapStr = `$${(mcap / 1e6).toFixed(2)}M`;
+        else marketCapStr = `$${mcap.toLocaleString()}`;
+    } else if (overview.MarketCapitalization) {
+        const mcap = parseFloat(overview.MarketCapitalization);
+        if (mcap >= 1e12) marketCapStr = `$${(mcap / 1e12).toFixed(2)}T`;
+        else if (mcap >= 1e9) marketCapStr = `$${(mcap / 1e9).toFixed(2)}B`;
+        else if (mcap >= 1e6) marketCapStr = `$${(mcap / 1e6).toFixed(2)}M`;
+        else marketCapStr = `$${mcap.toLocaleString()}`;
+    }
+
+    document.getElementById('metaClosePrice').textContent = price ? `$${price.toFixed(2)}` : 'N/A';
+    document.getElementById('metaMarketCap').textContent = marketCapStr;
+    document.getElementById('metaSector').textContent = sector;
+    document.getElementById('metaIndustry').textContent = industry;
+    document.getElementById('metaCountry').textContent = country;
+    
+    const panel = document.getElementById('companyMetadataPanel');
+    if (panel) panel.classList.remove('hidden');
+}
+
 // Update plotData to accept ticker/apiKey as arguments
 async function plotData(ticker, apiKey) {
     showLoadingSpinner();
@@ -646,9 +681,22 @@ async function plotData(ticker, apiKey) {
         const now = new Date();
         const startDate = new Date(new Date().setFullYear(now.getFullYear() - startYearAgo));
         const endDate = new Date(new Date().setFullYear(now.getFullYear() - endYearAgo));
+        
+        let latestYahoo = null;
+        try {
+            latestYahoo = await fetchLatestYahooPrice(ticker);
+        } catch (e) {
+            console.warn("Failed to fetch latest Yahoo price:", e);
+        }
+
         const { rawData, fxRateUsed } = await fetchFinancialData(ticker, apiKey, startDate, endDate, metricsConfig);
-        const processedMetrics = processFinancialData(rawData, fxRateUsed, startDate, endDate, metricsConfig);
-        const chartData = prepareChartData(processedMetrics, getSelectedMetricsForPlotting(), metricsConfig);
+        const processedMetrics = processFinancialData(rawData, fxRateUsed, startDate, endDate, metricsConfig, latestYahoo);
+        const chartData = prepareChartData(processedMetrics, getSelectedMetricsForPlotting(), metricsConfig, { perShareMetrics: Array.from(activePerShareMetrics) });
+        
+        if (rawData) {
+            updateCompanyMetadataPanel(ticker, latestYahoo, rawData);
+        }
+
         if (chartData) {
             createOrUpdateChart(chartData);
             lastFetchedChartData = { ...chartData, processedMetrics }; // Cache both chart data and processed metrics
@@ -753,13 +801,17 @@ export const metricsConfig = [
     },
     {
         id: 'dividendPayout',
-        label: 'Dividend Payout',
+        label: 'Dividends',
         type: 'raw_fundamental',
         source_function: 'CASH_FLOW',
         source_path: ['annualReports', 'dividendPayout'],
         date_keys: 'fiscalDateEnding',
-        is_plottable: false,
-        isTimeSeries: false
+        color: 'rgb(255, 159, 64)',
+        axis: 'y-ratio',
+        ui_radio_id: 'selectDividends',
+        is_plottable: true,
+        isTimeSeries: false,
+        isAggregate: true
     },
     {
         id: 'ttmDividends',
@@ -768,8 +820,7 @@ export const metricsConfig = [
         calculation_formula: 'dividendPayout / commonSharesOutstanding',
         color: 'rgb(255, 159, 64)',
         axis: 'y-ratio',
-        ui_radio_id: 'selectDividends',
-        is_plottable: true
+        is_plottable: false
     },
     {
         id: 'dividendYieldTTM',
@@ -829,7 +880,8 @@ export const metricsConfig = [
         axis: 'y-ratio',
         ui_radio_id: 'selectRevenues',
         is_plottable: true,
-        isTimeSeries: false
+        isTimeSeries: false,
+        isAggregate: true
     },
     {
         id: 'netIncome',
@@ -842,7 +894,8 @@ export const metricsConfig = [
         axis: 'y-ratio',
         ui_radio_id: 'selectNetIncome',
         is_plottable: true,
-        isTimeSeries: false
+        isTimeSeries: false,
+        isAggregate: true
     },
     {
         id: 'annualEPS',
@@ -868,7 +921,8 @@ export const metricsConfig = [
         axis: 'y-ratio',
         ui_radio_id: 'selectCapex',
         is_plottable: true,
-        isTimeSeries: false
+        isTimeSeries: false,
+        isAggregate: true
     },
     {
         id: 'operatingCashflow',
@@ -882,7 +936,8 @@ export const metricsConfig = [
         ui_radio_id: 'selectOperatingCashflow',
         is_plottable: true,
         isTimeSeries: false,
-        fx_adjust: true
+        fx_adjust: true,
+        isAggregate: true
     },
     {
         id: 'operatingCashflowPerShare',
@@ -929,7 +984,8 @@ export const metricsConfig = [
         color: 'rgb(54, 162, 235)',
         axis: 'y-ratio',
         ui_radio_id: 'selectFCF',
-        is_plottable: true
+        is_plottable: true,
+        isAggregate: true
     },
     {
         id: 'fcfPerShare',
@@ -937,6 +993,138 @@ export const metricsConfig = [
         type: 'derived_custom',
         calculation_formula: 'fcf / commonSharesOutstanding',
         is_plottable: false
+    },
+    {
+        id: 'totalAssets',
+        label: 'Total Assets',
+        type: 'raw_fundamental',
+        source_function: 'BALANCE_SHEET',
+        source_path: ['annualReports', 'totalAssets'],
+        date_keys: 'fiscalDateEnding',
+        is_plottable: false,
+        isTimeSeries: false
+    },
+    {
+        id: 'totalShareholderEquity',
+        label: 'Total Shareholder Equity',
+        type: 'raw_fundamental',
+        source_function: 'BALANCE_SHEET',
+        source_path: ['annualReports', 'totalShareholderEquity'],
+        date_keys: 'fiscalDateEnding',
+        is_plottable: false,
+        isTimeSeries: false
+    },
+    {
+        id: 'longTermDebt',
+        label: 'Long Term Debt',
+        type: 'raw_fundamental',
+        source_function: 'BALANCE_SHEET',
+        source_path: ['annualReports', 'longTermDebt'],
+        date_keys: 'fiscalDateEnding',
+        is_plottable: false,
+        isTimeSeries: false
+    },
+    {
+        id: 'shortTermDebt',
+        label: 'Short Term Debt',
+        type: 'raw_fundamental',
+        source_function: 'BALANCE_SHEET',
+        source_path: ['annualReports', 'shortTermDebt'],
+        date_keys: 'fiscalDateEnding',
+        is_plottable: false,
+        isTimeSeries: false
+    },
+    {
+        id: 'cashAndCashEquivalents',
+        label: 'Cash and Cash Equivalents',
+        type: 'raw_fundamental',
+        source_function: 'BALANCE_SHEET',
+        source_path: ['annualReports', 'cashAndCashEquivalentsAtCarryingValue'],
+        date_keys: 'fiscalDateEnding',
+        is_plottable: false,
+        isTimeSeries: false
+    },
+    {
+        id: 'cashAndShortTermInvestments',
+        label: 'Cash and Short Term Investments',
+        type: 'raw_fundamental',
+        source_function: 'BALANCE_SHEET',
+        source_path: ['annualReports', 'cashAndShortTermInvestments'],
+        date_keys: 'fiscalDateEnding',
+        is_plottable: false,
+        isTimeSeries: false
+    },
+    {
+        id: 'ebitda',
+        label: 'EBITDA',
+        type: 'raw_fundamental',
+        source_function: 'INCOME_STATEMENT',
+        source_path: ['annualReports', 'ebitda'],
+        date_keys: 'fiscalDateEnding',
+        color: 'rgb(255, 99, 132)',
+        axis: 'y-ratio',
+        ui_radio_id: 'selectEBITDA',
+        is_plottable: true,
+        isTimeSeries: false,
+        isAggregate: true
+    },
+    {
+        id: 'roa',
+        label: 'ROA (%)',
+        type: 'derived_ratio',
+        calculation_formula: 'netIncome / totalAssets',
+        color: 'rgb(54, 162, 235)',
+        axis: 'y-ratio',
+        ui_radio_id: 'selectROA',
+        is_plottable: true
+    },
+    {
+        id: 'roe',
+        label: 'ROE (%)',
+        type: 'derived_ratio',
+        calculation_formula: 'netIncome / totalShareholderEquity',
+        color: 'rgb(75, 192, 192)',
+        axis: 'y-ratio',
+        ui_radio_id: 'selectROE',
+        is_plottable: true
+    },
+    {
+        id: 'marketCap',
+        label: 'Market Cap',
+        type: 'derived_ratio',
+        calculation_formula: 'price / price',
+        color: 'rgb(255, 159, 64)',
+        axis: 'y-ratio',
+        is_plottable: false
+    },
+    {
+        id: 'enterpriseValue',
+        label: 'Enterprise Value',
+        type: 'derived_ratio',
+        calculation_formula: 'price / price',
+        color: 'rgb(153, 102, 255)',
+        axis: 'y-ratio',
+        ui_radio_id: 'selectEV',
+        is_plottable: true,
+        isAggregate: true
+    },
+    {
+        id: 'evEbitda',
+        label: 'EV/EBITDA',
+        type: 'derived_ratio',
+        calculation_formula: 'price / price',
+        color: 'rgb(201, 203, 207)',
+        axis: 'y-ratio',
+        ui_radio_id: 'selectEvEbitda',
+        is_plottable: true
+    },
+    {
+        id: 'overview_dummy',
+        type: 'raw_fundamental',
+        source_function: 'OVERVIEW',
+        source_path: [],
+        is_plottable: false,
+        isTimeSeries: false
     }
 ];
 
@@ -1009,15 +1197,22 @@ function getSelectedMetricsForPlotting() {
             switch (metricId) {
                 case 'REVENUES': selected.push('revenues'); break;
                 case 'NET_INCOME': selected.push('netIncome'); break;
+                case 'EBITDA': selected.push('ebitda'); break;
                 case 'EPS': selected.push('annualEPS'); break;
                 case 'CAPEX': selected.push('capitalExpenditures'); break;
                 case 'FCF': selected.push('fcf'); break;
+                case 'OPERATING_CASHFLOW': selected.push('operatingCashflow'); break;
                 case 'SO': selected.push('commonSharesOutstanding'); break;
-                case 'DIVIDENDS': selected.push('ttmDividends'); break;
+                case 'DIVIDENDS': selected.push('dividendPayout'); break;
                 case 'PE': selected.push('peRatio'); break;
                 case 'PS': selected.push('psRatio'); break;
                 case 'PFCF': selected.push('pFcfRatio'); break;
+                case 'POCF': selected.push('pOcfRatio'); break;
                 case 'DIVYIELD': selected.push('dividendYieldTTM'); break;
+                case 'ROA': selected.push('roa'); break;
+                case 'ROE': selected.push('roe'); break;
+                case 'EV': selected.push('enterpriseValue'); break;
+                case 'EV_EBITDA': selected.push('evEbitda'); break;
             }
         }
     }
@@ -1191,12 +1386,24 @@ function replotFromCache() {
         // Use cached processedMetrics if available, otherwise fallback to empty object
         const processedMetrics = lastFetchedChartData.processedMetrics || {};
         const selectedMetrics = getSelectedMetricsForPlotting() || [];
-        const { datasets, commonLabels } = prepareChartData(processedMetrics, selectedMetrics, metricsConfig);
+        const { datasets, commonLabels } = prepareChartData(processedMetrics, selectedMetrics, metricsConfig, { perShareMetrics: Array.from(activePerShareMetrics) });
         createOrUpdateChart({ ...lastFetchedChartData, datasets, commonLabels });
     }
 }
 
 // Event Listeners
+function downloadChartPng() {
+    const canvas = document.getElementById("priceChart");
+    if (!canvas) return;
+    
+    const link = document.createElement("a");
+    link.download = `${tickerInputTop.value || 'Fink'}_chart.png`;
+    link.href = canvas.toDataURL("image/png");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
 if (typeof window !== 'undefined') {
     window.addEventListener('DOMContentLoaded', () => {
         initializeAlphaVantageDataKnowledgeBase();
@@ -1206,6 +1413,26 @@ if (typeof window !== 'undefined') {
         togglePriceCheckbox.addEventListener('change', replotFromCache);
         ratioSelectRadios.forEach(radio => {
             radio.addEventListener('change', replotFromCache);
+        });
+
+        const downloadPngBtn = document.getElementById('downloadPngBtn');
+        if (downloadPngBtn) {
+            downloadPngBtn.addEventListener('click', downloadChartPng);
+        }
+
+        document.addEventListener('click', (e) => {
+            if (e.target && e.target.classList.contains('per-share-toggle')) {
+                const btn = e.target;
+                const metricId = btn.getAttribute('data-metric');
+                if (activePerShareMetrics.has(metricId)) {
+                    activePerShareMetrics.delete(metricId);
+                    btn.classList.remove('bg-blue-600', 'text-white', 'border-blue-600');
+                } else {
+                    activePerShareMetrics.add(metricId);
+                    btn.classList.add('bg-blue-600', 'text-white', 'border-blue-600');
+                }
+                replotFromCache();
+            }
         });
 
         // We don't need a listener for timeframeSelect to replot from cache,

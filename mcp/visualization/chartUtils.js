@@ -4,9 +4,13 @@
 /**
  * Prepares chart data for Chart.js from processed metrics.
  */
-function prepareChartData(processedMetrics, selectedMetrics, metricsConfig) {
+function prepareChartData(processedMetrics, selectedMetrics, metricsConfig, options) {
     if (!processedMetrics) return { datasets: [], commonLabels: [] };
     selectedMetrics = selectedMetrics || [];
+    options = options || {};
+    const perShareMetrics = options.perShareMetrics || [];
+    const axisMappings = options.axisMappings || new Map();
+    const normalize = !!options.normalize;
     const datasetsForChart = [];
     
     // Find the longest array/object of date keys across all metrics
@@ -22,6 +26,8 @@ function prepareChartData(processedMetrics, selectedMetrics, metricsConfig) {
         }
     }
 
+    const sharesMap = new Map(Object.entries(processedMetrics['shares_outstanding'] || {}));
+
     for (const metricId of selectedMetrics) {
         const metricConfig = metricsConfig.find(m => m.id === metricId);
         const data = processedMetrics[metricId];
@@ -31,21 +37,42 @@ function prepareChartData(processedMetrics, selectedMetrics, metricsConfig) {
 
         let dataMap;
         if (Array.isArray(data)) {
-            // Convert array data to a Map for efficient lookup
             dataMap = new Map(data.map(item => [item.date, item.value]));
         } else {
-            // Handle object-based data (like 'price')
             dataMap = new Map(Object.entries(data));
         }
 
-        const alignedData = commonLabels.map(label => dataMap.get(label) ?? null);
+        const alignedData = commonLabels.map(label => {
+            let val = dataMap.get(label) ?? null;
+            if (val !== null && perShareMetrics.includes(metricId) && metricConfig.isAggregate) {
+                const shares = sharesMap.get(label);
+                if (shares && shares > 0) {
+                    val = val / shares;
+                } else {
+                    val = null; // Division by zero/missing shares safeguard
+                }
+            }
+            return val;
+        });
+
+        // Determine Axis ID
+        let yAxisID = metricConfig.axis || metricConfig.defaultAxis || 'y';
+        if (axisMappings.has(metricId)) {
+            yAxisID = axisMappings.get(metricId);
+        }
+
+        // Suffix label with axis indicator only if not normalizing (since normalization is single-axis)
+        let axisSuffix = "";
+        if (!normalize) {
+            axisSuffix = yAxisID === 'y' ? " (L)" : " (R)";
+        }
 
         datasetsForChart.push({
-            label: metricConfig.label,
+            label: metricConfig.label + (perShareMetrics.includes(metricId) && metricConfig.isAggregate ? " ($/sh)" : "") + axisSuffix,
             data: alignedData,
             borderColor: metricConfig.color,
             backgroundColor: metricConfig.color,
-            yAxisID: metricConfig.axis,
+            yAxisID: yAxisID,
             tension: 0.1,
             fill: false,
             spanGaps: true
@@ -86,7 +113,7 @@ function setupDualSlider(startSliderId, endSliderId, trackClass, startLabelId, e
         
         const pct1 = (val1 / max) * 100;
         const pct2 = (val2 / max) * 100;
-        track.style.background = `linear-gradient(to right, #475569 ${pct1}%, #3b82f6 ${pct1}%, #3b82f6 ${pct2}%, #475569 ${pct2}%)`;
+        track.style.background = `linear-gradient(to right, #cbd5e1 ${pct1}%, #3b82f6 ${pct1}%, #3b82f6 ${pct2}%, #cbd5e1 ${pct2}%)`;
         
         if (labels.length > 0) {
             if (startLabel) startLabel.innerText = labels[val1];
@@ -127,7 +154,18 @@ function setupDualSlider(startSliderId, endSliderId, trackClass, startLabelId, e
 /**
  * Initializes the entire financial chart dashboard with config and events.
  */
-function initFinancialChart({ ticker, dataUrl, metricsConfig, initialStartDate, initialEndDate }) {
+function initFinancialChart({ 
+    ticker, 
+    dataUrl, 
+    metricsConfig, 
+    initialMetrics, 
+    initialStartDate, 
+    initialEndDate,
+    initialNormalize,
+    initialPerShareMetrics,
+    initialLeftAxisMetrics,
+    initialRightAxisMetrics
+}) {
     let chartInstance = null;
     let commonLabelsGlobal = [];
     let processedMetrics = {};
@@ -135,14 +173,43 @@ function initFinancialChart({ ticker, dataUrl, metricsConfig, initialStartDate, 
 
     function getSelectedMetrics() {
         const selected = [];
-        if (document.getElementById('metric-price').checked) selected.push('price');
-        if (document.getElementById('metric-pe_ratio').checked) selected.push('pe_ratio');
-        if (document.getElementById('metric-eps').checked) selected.push('eps');
-        if (document.getElementById('metric-revenue').checked) selected.push('revenue');
-        if (document.getElementById('metric-free_cash_flow').checked) selected.push('free_cash_flow');
-        if (document.getElementById('metric-shares_outstanding').checked) selected.push('shares_outstanding');
-        if (document.getElementById('metric-ps_ratio').checked) selected.push('ps_ratio');
+        metricsConfig.forEach(m => {
+            const el = document.getElementById(`metric-${m.id}`);
+            if (el && el.checked) {
+                selected.push(m.id);
+            }
+        });
         return selected;
+    }
+
+    function getPerShareMetrics() {
+        const perShare = [];
+        metricsConfig.forEach(m => {
+            const btn = document.getElementById(`sh-${m.id}`);
+            if (btn && btn.classList.contains('active')) {
+                perShare.push(m.id);
+            }
+        });
+        return perShare;
+    }
+
+    function getAxisMappings() {
+        const mappings = new Map();
+        metricsConfig.forEach(m => {
+            const container = document.getElementById(`axis-selector-${m.id}`);
+            if (container) {
+                const activeBtn = container.querySelector('.btn-axis.active');
+                if (activeBtn) {
+                    mappings.set(m.id, activeBtn.innerText === 'L' ? 'y' : 'y1');
+                }
+            }
+        });
+        return mappings;
+    }
+
+    function isNormalizeChecked() {
+        const el = document.getElementById('global-normalize');
+        return el ? el.checked : false;
     }
 
     function formatNumber(value) {
@@ -154,16 +221,21 @@ function initFinancialChart({ ticker, dataUrl, metricsConfig, initialStartDate, 
         return value.toFixed(1);
     }
 
-    function formatTooltipVal(val, label) {
+    function formatTooltipVal(val, label, normalize) {
         if (val === null || val === undefined) return '';
+        if (normalize) {
+            return val.toFixed(2) + "%";
+        }
         const labelLower = label.toLowerCase();
-        const isCurrency = label.includes("$") || labelLower.includes("revenue") || labelLower.includes("cash flow") || labelLower.includes("price") || labelLower.includes("fcf");
+        const isCurrency = label.includes("$") || labelLower.includes("revenue") || labelLower.includes("cash flow") || labelLower.includes("price") || labelLower.includes("fcf") || labelLower.includes("cogs") || labelLower.includes("expenses") || labelLower.includes("repurchases") || labelLower.includes("equivalents") || labelLower.includes("debt") || labelLower.includes("cap") || labelLower.includes("value");
         const prefix = isCurrency ? "$" : "";
+        const suffix = labelLower.includes("margin") || labelLower.includes("yield") || labelLower.includes("ratio (fcf") || labelLower.includes("ratio (ocf") ? "%" : "";
+        
         const absVal = Math.abs(val);
-        if (absVal >= 1e9) return prefix + (val / 1e9).toFixed(2) + "B";
-        if (absVal >= 1e6) return prefix + (val / 1e6).toFixed(2) + "M";
-        if (absVal >= 1e3) return prefix + (val / 1e3).toFixed(2) + "K";
-        return prefix + val.toFixed(2);
+        if (absVal >= 1e9) return prefix + (val / 1e9).toFixed(2) + "B" + suffix;
+        if (absVal >= 1e6) return prefix + (val / 1e6).toFixed(2) + "M" + suffix;
+        if (absVal >= 1e3) return prefix + (val / 1e3).toFixed(2) + "K" + suffix;
+        return prefix + val.toFixed(2) + suffix;
     }
 
     function findClosestDateIndex(labels, targetDateStr) {
@@ -185,7 +257,15 @@ function initFinancialChart({ ticker, dataUrl, metricsConfig, initialStartDate, 
 
     function updateChart() {
         const selectedMetrics = getSelectedMetrics();
-        const { datasets, commonLabels } = prepareChartData(processedMetrics, selectedMetrics, metricsConfig);
+        const perShare = getPerShareMetrics();
+        const axisMappings = getAxisMappings();
+        const normalize = isNormalizeChecked();
+
+        const { datasets, commonLabels } = prepareChartData(processedMetrics, selectedMetrics, metricsConfig, {
+            perShareMetrics: perShare,
+            axisMappings: axisMappings,
+            normalize: normalize
+        });
         
         if (!commonLabelsGlobal.length || commonLabelsGlobal.length !== commonLabels.length) {
             commonLabelsGlobal = commonLabels;
@@ -197,17 +277,51 @@ function initFinancialChart({ ticker, dataUrl, metricsConfig, initialStartDate, 
         const endIdx = endSlider ? (isNaN(parseInt(endSlider.value)) ? (commonLabels.length - 1) : parseInt(endSlider.value)) : (commonLabels.length - 1);
         
         let filteredLabels = commonLabels.slice(startIdx, endIdx + 1);
-        let filteredDatasets = datasets.map(ds => ({ 
-            ...ds, 
-            data: ds.data.slice(startIdx, endIdx + 1) 
-        }));
+        let filteredDatasets = datasets.map(ds => {
+            let slicedData = ds.data.slice(startIdx, endIdx + 1);
+            
+            // Apply Normalization over the visible range if active
+            if (normalize) {
+                // Find first non-null, non-zero baseline value in this sliced window
+                let baseline = null;
+                for (let val of slicedData) {
+                    if (val !== null && val !== undefined && val !== 0) {
+                        baseline = val;
+                        break;
+                    }
+                }
+                
+                if (baseline !== null) {
+                    slicedData = slicedData.map(v => v !== null && v !== undefined ? ((v / baseline) * 100) : null);
+                } else {
+                    slicedData = slicedData.map(() => null);
+                }
+            }
+
+            return { 
+                ...ds, 
+                data: slicedData,
+                yAxisID: normalize ? 'y' : ds.yAxisID // Standardize to left axis if normalized
+            };
+        });
         
         if (chartInstance) {
             chartInstance.data.labels = filteredLabels;
             chartInstance.data.datasets = filteredDatasets;
+            // Update scales titles & configs based on normalization
+            if (normalize) {
+                chartInstance.options.scales.y.ticks.callback = v => v.toFixed(0) + "%";
+                chartInstance.options.scales.y1.display = false;
+            } else {
+                chartInstance.options.scales.y.ticks.callback = v => formatNumber(v);
+                // Hide right axis if no active datasets are mapped to it
+                const hasRightAxis = filteredDatasets.some(ds => ds.yAxisID === 'y1');
+                chartInstance.options.scales.y1.display = hasRightAxis;
+            }
             chartInstance.update();
         } else {
             const ctx = document.getElementById("financialChart").getContext("2d");
+            const hasRightAxis = filteredDatasets.some(ds => ds.yAxisID === 'y1');
             chartInstance = new Chart(ctx, {
                 type: "line",
                 data: {
@@ -221,21 +335,22 @@ function initFinancialChart({ ticker, dataUrl, metricsConfig, initialStartDate, 
                     scales: {
                         y: { 
                             type: "linear", position: "left",
-                            ticks: { color: "#94a3b8", callback: v => "$" + formatNumber(v) },
-                            grid: { color: "rgba(148, 163, 184, 0.1)" }
+                            ticks: { color: "#334155", callback: v => formatNumber(v) },
+                            grid: { color: "rgba(0, 0, 0, 0.05)" }
                         },
                         y1: { 
                             type: "linear", position: "right",
-                            ticks: { color: "#94a3b8", callback: v => formatNumber(v) },
-                            grid: { drawOnChartArea: false }
+                            ticks: { color: "#334155", callback: v => formatNumber(v) },
+                            grid: { drawOnChartArea: false },
+                            display: !normalize && hasRightAxis
                         },
-                        x: { ticks: { color: "#94a3b8" }, grid: { color: "rgba(148, 163, 184, 0.1)" } }
+                        x: { ticks: { color: "#334155" }, grid: { color: "rgba(0, 0, 0, 0.05)" } }
                     },
                     plugins: {
-                        legend: { labels: { color: "#f8fafc" } },
+                        legend: { labels: { color: "#0f172a", font: { weight: '600', size: 11 } } },
                         tooltip: {
                             callbacks: {
-                                label: ctx => ctx.dataset.label + ': ' + formatTooltipVal(ctx.parsed.y, ctx.dataset.label)
+                                label: ctx => ctx.dataset.label + ': ' + formatTooltipVal(ctx.parsed.y, ctx.dataset.label, isNormalizeChecked())
                             }
                         }
                     }
@@ -244,6 +359,7 @@ function initFinancialChart({ ticker, dataUrl, metricsConfig, initialStartDate, 
         }
     }
 
+    // Set timeline bounds
     function setTimeline(timeline) {
         if (!commonLabelsGlobal.length) return;
         const total = commonLabelsGlobal.length;
@@ -263,23 +379,85 @@ function initFinancialChart({ ticker, dataUrl, metricsConfig, initialStartDate, 
         if (sliderController) {
             sliderController.updateRange(sIdx, eIdx);
         }
-        
-        document.querySelectorAll('.btn-group .btn').forEach(btn => {
-            btn.classList.remove('active');
-            if (btn.getAttribute('onclick').includes(timeline)) {
-                btn.classList.add('active');
-            }
-        });
         updateChart();
     }
 
-    // Expose setTimeline globally so standard onclick markup attributes resolve correctly
-    window.setTimeline = setTimeline;
+    // Expose control handlers globally
+    window.onMetricCheckedChange = function(metricId) {
+        updateChart();
+    };
+    
+    window.setMetricAxis = function(metricId, axis) {
+        const container = document.getElementById(`axis-selector-${metricId}`);
+        if (container) {
+            container.querySelectorAll('.btn-axis').forEach(btn => {
+                btn.classList.remove('active');
+                if ((axis === 'y' && btn.innerText === 'L' || axis === 'y1' && btn.innerText === 'R')) {
+                    btn.classList.add('active');
+                }
+            });
+        }
+        updateChart();
+    };
+    
+    window.togglePerShare = function(metricId) {
+        const btn = document.getElementById(`sh-${metricId}`);
+        if (btn) {
+            btn.classList.toggle('active');
+        }
+        updateChart();
+    };
+    
+    window.onNormalizeChanged = function() {
+        updateChart();
+    };
 
-    // Attach event listeners to checkboxes
-    document.querySelectorAll('.checkbox-group input').forEach(input => {
-        input.addEventListener('change', updateChart);
-    });
+    window.updateChartParameters = function({ metrics, startDate, endDate, normalize, perShareMetrics, leftAxisMetrics, rightAxisMetrics }) {
+        metricsConfig.forEach(m => {
+            const el = document.getElementById(`metric-${m.id}`);
+            if (el) el.checked = metrics.includes(m.id);
+            
+            const shBtn = document.getElementById(`sh-${m.id}`);
+            if (shBtn) {
+                if (perShareMetrics && perShareMetrics.includes(m.id)) {
+                    shBtn.classList.add('active');
+                } else {
+                    shBtn.classList.remove('active');
+                }
+            }
+            
+            const axisContainer = document.getElementById(`axis-selector-${m.id}`);
+            if (axisContainer) {
+                axisContainer.querySelectorAll('.btn-axis').forEach(btn => {
+                    btn.classList.remove('active');
+                    const isL = btn.innerText === 'L';
+                    const targetL = (leftAxisMetrics && leftAxisMetrics.includes(m.id)) || 
+                                    (!rightAxisMetrics || !rightAxisMetrics.includes(m.id)) && m.defaultAxis === 'y';
+                    if ((isL && targetL) || (!isL && !targetL)) {
+                        btn.classList.add('active');
+                    }
+                });
+            }
+        });
+        
+        const normEl = document.getElementById('global-normalize');
+        if (normEl) normEl.checked = !!normalize;
+        
+        if (startDate || endDate) {
+            let sIdx = 0;
+            let eIdx = commonLabelsGlobal.length - 1;
+            if (startDate) {
+                const idx = findClosestDateIndex(commonLabelsGlobal, startDate);
+                if (idx !== -1) sIdx = idx;
+            }
+            if (endDate) {
+                const idx = findClosestDateIndex(commonLabelsGlobal, endDate);
+                if (idx !== -1) eIdx = idx;
+            }
+            if (sliderController) sliderController.updateRange(sIdx, eIdx);
+        }
+        updateChart();
+    };
 
     // Load data dynamically
     fetch(dataUrl)
@@ -302,13 +480,34 @@ function initFinancialChart({ ticker, dataUrl, metricsConfig, initialStartDate, 
             'slider-end-label',
             commonLabelsGlobal,
             (sIdx, eIdx) => {
-                document.querySelectorAll('.btn-group .btn').forEach(btn => btn.classList.remove('active'));
                 updateChart();
             }
         );
         
-        updateChart();
-
+        // Initial setup from window variables
+        if (initialMetrics) {
+            metricsConfig.forEach(m => {
+                const el = document.getElementById(`metric-${m.id}`);
+                if (el) el.checked = initialMetrics.includes(m.id);
+            });
+        }
+        if (initialPerShareMetrics) {
+            initialPerShareMetrics.forEach(mId => {
+                const btn = document.getElementById(`sh-${mId}`);
+                if (btn) btn.classList.add('active');
+            });
+        }
+        if (initialLeftAxisMetrics) {
+            initialLeftAxisMetrics.forEach(mId => {
+                window.setMetricAxis(mId, 'y');
+            });
+        }
+        if (initialRightAxisMetrics) {
+            initialRightAxisMetrics.forEach(mId => {
+                window.setMetricAxis(mId, 'y1');
+            });
+        }
+        
         if (initialStartDate || initialEndDate) {
             let sIdx = 0;
             let eIdx = commonLabelsGlobal.length - 1;
@@ -321,9 +520,14 @@ function initFinancialChart({ ticker, dataUrl, metricsConfig, initialStartDate, 
                 if (idx !== -1) eIdx = idx;
             }
             if (sliderController) sliderController.updateRange(sIdx, eIdx);
-            updateChart();
-        } else {
-            setTimeline('all');
+        }
+        
+        updateChart();
+        
+        // Check if there is any pending update queued by a duplicate frame
+        if (window.pendingUpdate) {
+            window.updateChartParameters(window.pendingUpdate);
+            delete window.pendingUpdate;
         }
       });
 }

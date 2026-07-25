@@ -23,6 +23,15 @@ async def test_mcp_alphavantage_tool_call():
     assert response["success"] is True
     assert response["ticker"] == "AMZN"
     assert response["source"] in ["mock", "cache"]
+    
+    # Assert corporate metadata is present in response
+    assert "corporate_identity" in response
+    meta = response["corporate_identity"]
+    assert meta["ticker"] == "AMZN"
+    assert "sector" in meta
+    assert "country" in meta
+    assert "last_closing_price" in meta
+    assert "market_cap" in meta
 
 @pytest.mark.asyncio
 async def test_mcp_visualization_tool_call():
@@ -39,11 +48,27 @@ async def test_mcp_visualization_tool_call():
     
     assert len(results_viz.content) > 0
     code_output = results_viz.content[0].text
-    assert code_output.startswith('```html')
+    assert code_output.startswith('<iframe')
     assert 'dashboard.css' in code_output
     assert 'chart.js' in code_output
     assert 'chartUtils.js' in code_output
     assert 'amzn-data.json' in code_output
+
+    # Query filter_metrics_tool for the new metrics on the same ticker (AMZN)
+    results_filter = await mcp.call_tool("filter_metrics_tool", {
+        "ticker": "AMZN",
+        "metrics": ["roa", "roe", "ebitda", "ev_ebitda"]
+    })
+    filter_response = json.loads(results_filter.content[0].text)
+    assert "data" in filter_response
+    assert len(filter_response["data"]) > 0
+    
+    # Verify new metrics are calculated
+    sample_pt = filter_response["data"][-1]
+    assert "roa" in sample_pt
+    assert "roe" in sample_pt
+    assert "ebitda" in sample_pt
+    assert "ev_ebitda" in sample_pt
 
 @pytest.mark.asyncio
 async def test_mcp_invalid_tool_call():

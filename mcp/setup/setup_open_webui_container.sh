@@ -2,10 +2,10 @@
 set -e
 echo "🚚 Syncing scripts into open-webui container..."
 docker cp mcp/visualization/fink_visualization_embed_native_tool.py open-webui-fink-mcp:/app/backend/data/functions/visualization_embed_native_tool.py
-docker cp mcp/setup/register_native_tool.py open-webui-fink-mcp:/app/backend/register_native_tool.py
+docker cp mcp/setup/seed_webui_db.py open-webui-fink-mcp:/app/backend/seed_webui_db.py
 
 echo "💾 Running custom tool and model registration..."
-docker exec -e WEBUI_SECRET_KEY="test-secret" open-webui-fink-mcp python /app/backend/register_native_tool.py \
+docker exec -e WEBUI_SECRET_KEY="test-secret" open-webui-fink-mcp python /app/backend/seed_webui_db.py \
   --id visualization_embed_native \
   --name "Fink Visualization Embed Native Tool" \
   --file /app/backend/data/functions/visualization_embed_native_tool.py \

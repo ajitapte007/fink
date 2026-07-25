@@ -26,7 +26,7 @@ describe('prepareChartData', () => {
         const result = prepareChartData(processedMetrics, ['price'], metricsConfig);
         expect(result.commonLabels).toEqual(['2023-01-31', '2023-02-28']);
         expect(result.datasets.length).toBe(1);
-        expect(result.datasets[0].label).toBe('Price');
+        expect(result.datasets[0].label).toBe('Price (L)');
         expect(result.datasets[0].data).toEqual([100, 110]);
     });
 
@@ -41,9 +41,9 @@ describe('prepareChartData', () => {
         const result = prepareChartData(processedMetrics, ['price', 'revenue'], metricsConfig);
         expect(result.commonLabels).toEqual(['2023-01-31', '2023-02-28']);
         expect(result.datasets.length).toBe(2);
-        expect(result.datasets[0].label).toBe('Price');
+        expect(result.datasets[0].label).toBe('Price (L)');
         expect(result.datasets[0].data).toEqual([100, 110]);
-        expect(result.datasets[1].label).toBe('Revenue');
+        expect(result.datasets[1].label).toBe('Revenue (R)');
         expect(result.datasets[1].data).toEqual([200, 220]);
     });
 
@@ -57,6 +57,69 @@ describe('prepareChartData', () => {
         const result = prepareChartData(processedMetrics, ['price', 'revenue'], metricsConfig);
         expect(result.commonLabels).toEqual(['2023-01-31', '2023-02-28']);
         expect(result.datasets[1].data).toEqual([200, null]);
+    });
+
+    test('handles per-share division by zero/null gracefully', () => {
+        const metricsConfigWithAggregate = [
+            { id: 'revenue', label: 'Revenue', isAggregate: true, defaultAxis: 'y' }
+        ];
+        const processedMetrics = {
+            revenue: { '2023-01-31': 200, '2023-02-28': 300, '2023-03-31': 400 },
+            shares_outstanding: { '2023-01-31': 0, '2023-02-28': null, '2023-03-31': 10 }
+        };
+        const result = prepareChartData(processedMetrics, ['revenue'], metricsConfigWithAggregate, {
+            perShareMetrics: ['revenue']
+        });
+        // 200 / 0 => null, 300 / null => null, 400 / 10 => 40
+        expect(result.datasets[0].data).toEqual([null, null, 40]);
+    });
+
+    test('appends (L) or (R) to labels based on axis selection when not normalized', () => {
+        const metricsConfigWithAxis = [
+            { id: 'price', label: 'Price', defaultAxis: 'y' },
+            { id: 'pe_ratio', label: 'P/E', defaultAxis: 'y1' }
+        ];
+        const processedMetrics = {
+            price: { '2023-01-31': 100 },
+            pe_ratio: { '2023-01-31': 15 }
+        };
+        const result = prepareChartData(processedMetrics, ['price', 'pe_ratio'], metricsConfigWithAxis, {
+            normalize: false
+        });
+        expect(result.datasets[0].label).toBe('Price (L)');
+        expect(result.datasets[1].label).toBe('P/E (R)');
+    });
+
+    test('omits (L) or (R) labels when normalized is active', () => {
+        const metricsConfigWithAxis = [
+            { id: 'price', label: 'Price', defaultAxis: 'y' },
+            { id: 'pe_ratio', label: 'P/E', defaultAxis: 'y1' }
+        ];
+        const processedMetrics = {
+            price: { '2023-01-31': 100 },
+            pe_ratio: { '2023-01-31': 15 }
+        };
+        const result = prepareChartData(processedMetrics, ['price', 'pe_ratio'], metricsConfigWithAxis, {
+            normalize: true
+        });
+        expect(result.datasets[0].label).toBe('Price');
+        expect(result.datasets[1].label).toBe('P/E');
+    });
+
+    test('omits (L) or (R) labels when yoy is active', () => {
+        const metricsConfigWithAxis = [
+            { id: 'price', label: 'Price', defaultAxis: 'y' },
+            { id: 'pe_ratio', label: 'P/E', defaultAxis: 'y1' }
+        ];
+        const processedMetrics = {
+            price: { '2023-01-31': 100 },
+            pe_ratio: { '2023-01-31': 15 }
+        };
+        const result = prepareChartData(processedMetrics, ['price', 'pe_ratio'], metricsConfigWithAxis, {
+            yoy: true
+        });
+        expect(result.datasets[0].label).toBe('Price');
+        expect(result.datasets[1].label).toBe('P/E');
     });
 });
 

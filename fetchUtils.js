@@ -130,4 +130,27 @@ export async function fetchFinancialData(ticker, alphaVantageApiKey, startYearAg
 
     window.debugLog && window.debugLog(`[fetchFinancialData] returning data`);
     return { rawData: fetchedRawData, fxRateUsed };
+}
+
+/**
+ * Fetches the latest stock price and metadata from Yahoo Finance.
+ * @param {string} ticker
+ * @returns {Promise<{price: number|null, regularMarketTime: number|null}>}
+ */
+export async function fetchLatestYahooPrice(ticker) {
+    try {
+        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}`;
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+        const data = await response.json();
+        const meta = data?.chart?.result?.[0]?.meta;
+        if (!meta) throw new Error("Invalid response format");
+        return {
+            price: meta.regularMarketPrice || meta.previousClose || null,
+            regularMarketTime: meta.regularMarketTime || null
+        };
+    } catch (e) {
+        console.warn("Failed to fetch latest Yahoo price directly:", e);
+        return { price: null, regularMarketTime: null };
+    }
 } 

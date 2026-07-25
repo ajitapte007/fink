@@ -41,13 +41,31 @@ def fetch_alphavantage_data(ticker: str, mock_data: bool = True) -> dict:
                     error_found = True
                     error_details += f"API Note in {key}: {val['Note']}. "
                     
+        from data.models import VALID_METRIC_KEYS
+        from data.process_utils import get_corporate_identity
+        identity = get_corporate_identity(raw_data)
+        
+        corrupt_funcs = raw_data.get("_meta_corrupt_functions", [])
+        success = (not error_found) and (len(corrupt_funcs) == 0)
+        
+        err_dict = None
+        if not success:
+            err_dict = {
+                "message": "Data fetch failed or returned corrupt files",
+                "details": f"Failed or corrupt functions: {corrupt_funcs}. API Errors: {error_details}"
+            }
+        
         return {
             "ticker": ticker,
-            "success": not error_found,
+            "success": success,
             "source": raw_data.get("_meta_source", "unknown"),
             "last_refreshed": raw_data.get("_meta_last_refreshed", "unknown"),
             "expires_at": raw_data.get("_meta_expires_at", "unknown"),
-            "error_details": error_details if error_details else None
+            "corporate_identity": identity.model_dump() if hasattr(identity, "model_dump") else identity.dict(),
+            "valid_metric_keys": VALID_METRIC_KEYS,
+            "error_details": error_details if error_details else None,
+            "corrupt_functions": corrupt_funcs,
+            "error": err_dict
         }
         
     except Exception as e:

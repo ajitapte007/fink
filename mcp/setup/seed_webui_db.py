@@ -1,4 +1,4 @@
-# mcp/setup/register_native_tool.py
+# mcp/setup/seed_webui_db.py
 import argparse
 import sqlite3
 import time
@@ -50,9 +50,11 @@ async def register():
     system_prompt = (
         f"Today's date is {date.today().strftime('%A, %B %d, %Y')}.\n"
         "You are Fink, a financial analyst. Use the available tools to retrieve financial metrics and draw charts.\n"
-        f"- Use '{conn_prefix}_tool_alphavantage_post' to retrieve stock market financials.\n"
+        f"- Use '{conn_prefix}_tool_alphavantage_post' to retrieve stock market financials and prime the cache.\n"
         f"- Use '{args.id}' (Fink Visualization Embed Native Tool) to render interactive visual charts.\n"
-        f"- DO NOT call the raw internal '{conn_prefix}_tool_visualization_internal_post' tool.\n"
+        f"- DO NOT call the raw internal '{conn_prefix}_tool_visualization_internal_post' tool directly.\n"
+        f"- Call '{conn_prefix}_tool_filter_metrics_tool_post' ONLY if the user is asking a text-based question about a specific set of metrics. DO NOT call it before rendering a chart.\n"
+        "- Always consult the 'valid_metric_keys' list returned by the alphavantage tool to see the exact allowed metric names for filter_metrics_tool and visualization_embed_native (e.g., use 'revenue', 'net_income', 'free_cash_flow', 'total_debt', 'roa', 'roe', 'ebitda', 'ev_ebitda', etc., instead of guessing generic names like 'total_assets').\n"
         "- Always interpret follow-up queries or chart adjustment requests (e.g., 'can you plot EPS instead?' or 'make it the last 3 years') in the context of the active conversation. Do not treat these as unrelated queries; instead, resolve the active ticker from the chat history and call the native visualizer tool.\n"
         "- If the user asks about a different company/ticker in the same chat thread, politely tell them to start a separate chat thread to keep the charts and context clean."
     )
@@ -93,7 +95,12 @@ async def register():
         },
         "suggestion_prompts": None,
         "tags": [],
-        "toolIds": [args.id, args.mcp_server_id]
+        "toolIds": [
+            args.id,
+            f"{args.mcp_server_id.replace('server:', '').replace('-', '_')}_tool_alphavantage_post",
+            f"{args.mcp_server_id.replace('server:', '').replace('-', '_')}_tool_filter_metrics_tool_post",
+            f"{args.mcp_server_id.replace('server:', '').replace('-', '_')}_tool_qa_tool_post"
+        ]
     }
     
     cursor.execute("""
@@ -101,10 +108,15 @@ async def register():
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (args.model_id, admin_id, base_model_id, args.model_name, params_val, json.dumps(model_meta), created_at, int(time.time()), 1))
     
+    # 6. Seed default task models to prevent "Model '' was not found" during background title generation
+    cursor.execute("UPDATE config SET value = ? WHERE key = 'task.model.default';", (json.dumps(base_model_id),))
+    cursor.execute("UPDATE config SET value = ? WHERE key = 'task.model.external';", (json.dumps(base_model_id),))
+    
     conn.commit()
     conn.close()
     print(f"✅ Tool '{args.id}' registered with {len(specs)} parameter(s).")
     print(f"✅ Model '{args.model_id}' ('{args.model_name}') provisioned and configured successfully.")
+    print("✅ WebUI task models seeded successfully!")
 
 if __name__ == '__main__':
     asyncio.run(register())

@@ -142,7 +142,7 @@ export function calculateDerivedMetric(formula, processedData, commonDates) {
 /**
  * Processes raw financial data, applies FX conversion, and prepares for charting.
  */
-export function processFinancialData(rawData, fxRateUsed, startDate, endDate, metricsConfig) {
+export function processFinancialData(rawData, fxRateUsed, startDate, endDate, metricsConfig, latestYahooData) {
     // Removed appendToPapertrail for modular utility
     // 1. Extract and convert raw metrics
     const extractedRawMetrics = {};
@@ -187,6 +187,18 @@ export function processFinancialData(rawData, fxRateUsed, startDate, endDate, me
     }
 
     const processedMetrics = { ...extractedRawMetrics };
+
+    if (latestYahooData && latestYahooData.price) {
+        const latestPrice = latestYahooData.price;
+        const latestTime = latestYahooData.regularMarketTime;
+        const latestDate = latestTime 
+            ? new Date(latestTime * 1000).toISOString().slice(0, 10) 
+            : new Date().toISOString().slice(0, 10);
+        if (!processedMetrics['price']) {
+            processedMetrics['price'] = {};
+        }
+        processedMetrics['price'][latestDate] = latestPrice;
+    }
 
     // TTM Metrics
     metricsConfig.filter(m => m.type === 'derived_ttm').forEach(mc => {
@@ -243,7 +255,9 @@ export function processFinancialData(rawData, fxRateUsed, startDate, endDate, me
     const interpolatedMetrics = {};
     const metricsToInterpolate = new Set(metricsConfig.filter(m => m.is_plottable || [
         'ttmEps', 'rps', 'fcf', 'fcfPerShare', 'operatingCashflowPerShare',
-        'payoutRatioFcf', 'payoutRatioOcf'
+        'payoutRatioFcf', 'payoutRatioOcf', 'commonSharesOutstanding',
+        'longTermDebt', 'shortTermDebt', 'cashAndCashEquivalents', 'cashAndShortTermInvestments',
+        'ebitda', 'netIncome', 'totalAssets', 'totalShareholderEquity'
     ].includes(m.id)).map(m => m.id));
     
     for (const metricId in processedMetrics) {
@@ -268,9 +282,49 @@ export function processFinancialData(rawData, fxRateUsed, startDate, endDate, me
         const ratioResult = priceDates.map(date => {
             const num = numMap.get(date);
             const den = denMap.get(date);
-            return (num != null && den != null && den !== 0) ? { date, value: num / den } : { date, value: null };
+            let val = (num != null && den != null && den !== 0) ? num / den : null;
+            if (val !== null && (mc.id === 'roa' || mc.id === 'roe')) {
+                val = val * 100;
+            }
+            return { date, value: val };
         });
         interpolatedMetrics[mc.id] = ratioResult;
+    });
+
+    // Custom aggregate calculations (marketCap, enterpriseValue, evEbitda)
+    const priceMap = new Map(priceDates.map(d => [d, interpolatedMetrics['price']?.[d] ?? null]));
+    const sharesMap = new Map(priceDates.map(d => [d, interpolatedMetrics['commonSharesOutstanding']?.find(pt => pt.date === d)?.value ?? null]));
+    const debtMap = new Map(priceDates.map(d => {
+        const lt = interpolatedMetrics['longTermDebt']?.find(pt => pt.date === d)?.value ?? null;
+        const st = interpolatedMetrics['shortTermDebt']?.find(pt => pt.date === d)?.value ?? null;
+        if (lt === null && st === null) return [d, null];
+        return [d, (lt || 0) + (st || 0)];
+    }));
+    const cashMap = new Map(priceDates.map(d => {
+        const cashEquiv = interpolatedMetrics['cashAndCashEquivalents']?.find(pt => pt.date === d)?.value ?? null;
+        const cashShort = interpolatedMetrics['cashAndShortTermInvestments']?.find(pt => pt.date === d)?.value ?? null;
+        if (cashEquiv === null && cashShort === null) return [d, null];
+        return [d, cashEquiv || cashShort || 0];
+    }));
+    const ebitdaMap = new Map(priceDates.map(d => [d, interpolatedMetrics['ebitda']?.find(pt => pt.date === d)?.value ?? null]));
+
+    interpolatedMetrics['marketCap'] = priceDates.map(date => {
+        const price = priceMap.get(date);
+        const shares = sharesMap.get(date);
+        return (price !== null && shares !== null) ? { date, value: price * shares } : { date, value: null };
+    });
+
+    interpolatedMetrics['enterpriseValue'] = priceDates.map(date => {
+        const mcap = interpolatedMetrics['marketCap'].find(pt => pt.date === date)?.value ?? null;
+        const debt = debtMap.get(date) ?? 0;
+        const cash = cashMap.get(date) ?? 0;
+        return (mcap !== null) ? { date, value: mcap + debt - cash } : { date, value: null };
+    });
+
+    interpolatedMetrics['evEbitda'] = priceDates.map(date => {
+        const ev = interpolatedMetrics['enterpriseValue'].find(pt => pt.date === date)?.value ?? null;
+        const ebitda = ebitdaMap.get(date);
+        return (ev !== null && ebitda !== null && ebitda !== 0) ? { date, value: ev / ebitda } : { date, value: null };
     });
 
     return interpolatedMetrics;

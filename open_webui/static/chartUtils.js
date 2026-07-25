@@ -162,7 +162,7 @@ function initFinancialChart({
     initialMetrics, 
     initialStartDate, 
     initialEndDate,
-    initialNormalize,
+    initialTransform,
     initialPerShareMetrics,
     initialLeftAxisMetrics,
     initialRightAxisMetrics
@@ -171,6 +171,11 @@ function initFinancialChart({
     let commonLabelsGlobal = [];
     let processedMetrics = {};
     let sliderController = null;
+    
+    window.currentTransform = initialTransform || null;
+    if (window.updateTransformPills) {
+        window.updateTransformPills();
+    }
 
     function getSelectedMetrics() {
         const selected = [];
@@ -209,8 +214,11 @@ function initFinancialChart({
     }
 
     function isNormalizeChecked() {
-        const el = document.getElementById('global-normalize');
-        return el ? el.checked : false;
+        return window.currentTransform === 'normalize';
+    }
+
+    function isYoyChecked() {
+        return window.currentTransform === 'yoy';
     }
 
     function formatNumber(value) {
@@ -256,16 +264,33 @@ function initFinancialChart({
         return closestIdx;
     }
 
+    function getPriorYearIndex(commonLabels, targetIndex) {
+        const targetDate = new Date(commonLabels[targetIndex]);
+        let bestIndex = -1;
+        let minDiff = 45; // max 45 days difference allowed
+        for (let i = 0; i < targetIndex; i++) {
+            const priorDate = new Date(commonLabels[i]);
+            const diffDays = Math.abs((targetDate - priorDate) / (1000 * 60 * 60 * 24) - 365);
+            if (diffDays < minDiff) {
+                minDiff = diffDays;
+                bestIndex = i;
+            }
+        }
+        return bestIndex;
+    }
+
     function updateChart() {
         const selectedMetrics = getSelectedMetrics();
         const perShare = getPerShareMetrics();
         const axisMappings = getAxisMappings();
         const normalize = isNormalizeChecked();
+        const yoy = isYoyChecked();
 
         const { datasets, commonLabels } = prepareChartData(processedMetrics, selectedMetrics, metricsConfig, {
             perShareMetrics: perShare,
             axisMappings: axisMappings,
-            normalize: normalize
+            normalize: normalize,
+            yoy: yoy
         });
         
         if (!commonLabelsGlobal.length || commonLabelsGlobal.length !== commonLabels.length) {
@@ -297,20 +322,30 @@ function initFinancialChart({
                 } else {
                     slicedData = slicedData.map(() => null);
                 }
+            } else if (yoy) {
+                slicedData = slicedData.map((v, k) => {
+                    const currentIndex = startIdx + k;
+                    const priorIdx = getPriorYearIndex(commonLabels, currentIndex);
+                    if (priorIdx === -1) return null;
+                    const currentVal = ds.data[currentIndex];
+                    const priorVal = ds.data[priorIdx];
+                    if (currentVal === null || priorVal === null || priorVal === 0) return null;
+                    return ((currentVal - priorVal) / Math.abs(priorVal)) * 100;
+                });
             }
 
             return { 
                 ...ds, 
                 data: slicedData,
-                yAxisID: normalize ? 'y' : ds.yAxisID // Standardize to left axis if normalized
+                yAxisID: (normalize || yoy) ? 'y' : ds.yAxisID // Standardize to left axis if normalized or YoY
             };
         });
         
         if (chartInstance) {
             chartInstance.data.labels = filteredLabels;
             chartInstance.data.datasets = filteredDatasets;
-            // Update scales titles & configs based on normalization
-            if (normalize) {
+            // Update scales titles & configs based on normalization or YoY
+            if (normalize || yoy) {
                 chartInstance.options.scales.y.ticks.callback = v => v.toFixed(0) + "%";
                 chartInstance.options.scales.y1.display = false;
             } else {
@@ -343,7 +378,7 @@ function initFinancialChart({
                             type: "linear", position: "right",
                             ticks: { color: "#334155", callback: v => formatNumber(v) },
                             grid: { drawOnChartArea: false },
-                            display: !normalize && hasRightAxis
+                            display: !isNormalizeChecked() && !isYoyChecked() && hasRightAxis
                         },
                         x: { ticks: { color: "#334155" }, grid: { color: "rgba(0, 0, 0, 0.05)" } }
                     },
@@ -351,30 +386,11 @@ function initFinancialChart({
                         legend: { labels: { color: "#0f172a", font: { weight: '600', size: 11 } } },
                         tooltip: {
                             callbacks: {
-                                label: ctx => ctx.dataset.label + ': ' + formatTooltipVal(ctx.parsed.y, ctx.dataset.label, isNormalizeChecked())
+                                label: ctx => ctx.dataset.label + ': ' + formatTooltipVal(ctx.parsed.y, ctx.dataset.label, isNormalizeChecked() || isYoyChecked())
                             }
                         }
                     }
-                },
-                plugins: [
-                    {
-                        id: 'watermark',
-                        beforeDraw: (chart) => {
-                            const ctx = chart.ctx;
-                            const width = chart.width;
-                            const height = chart.height;
-                            ctx.save();
-                            ctx.font = 'bold 80px sans-serif';
-                            ctx.fillStyle = 'rgba(0, 0, 0, 0.04)';
-                            ctx.textAlign = 'center';
-                            ctx.textBaseline = 'middle';
-                            ctx.translate(width / 2, height / 2);
-                            ctx.rotate(-Math.PI / 6);
-                            ctx.fillText('FINK', 0, 0);
-                            ctx.restore();
-                        }
-                    }
-                ]
+                }
             });
         }
     }
@@ -560,113 +576,3 @@ function initFinancialChart({
 window.prepareChartData = prepareChartData;
 window.setupDualSlider = setupDualSlider;
 window.initFinancialChart = initFinancialChart;
-
-export function getCashflowSankeyChartUrl({ input, outputs, inputLabel }) {
-    // Default label
-    const fromLabel = inputLabel || input;
-    // Build data array for QuickChart Sankey
-    const data = outputs
-        .filter(o => o.value !== null && o.value !== undefined && !isNaN(o.value))
-        .map(o => ({ from: fromLabel, to: o.label, flow: Math.abs(o.value) }));
-    const chartConfig = {
-        type: 'sankey',
-        data: {
-            datasets: [
-                {
-                    data: data
-                }
-            ]
-        },
-        options: {
-            title: {
-                display: true,
-                text: 'Cashflow Overview',
-                font: { size: 20 }
-            }
-        }
-    };
-    const encoded = encodeURIComponent(JSON.stringify(chartConfig));
-    return `https://quickchart.io/chart?c=${encoded}&version=3`;
-}
-
-export function renderQuickChartImage(containerId, chartUrl) {
-    const container = document.getElementById(containerId);
-    if (!container) return;
-    container.innerHTML = '';
-    const img = document.createElement('img');
-    img.src = chartUrl;
-    img.style.maxWidth = '100%';
-    img.style.minHeight = '400px';
-    container.appendChild(img);
-}
-
-export function renderPlotlySankeyChart(containerId, inputLabel, outputs) {
-    const container = document.getElementById(containerId);
-    if (!container) return;
-    // Prepare nodes and links for Plotly Sankey
-    const labels = [inputLabel, ...outputs.map(o => o.label)];
-    const source = outputs.map(() => 0); // All from input node (index 0)
-    const target = outputs.map((_, i) => i + 1); // To each output node
-    const values = outputs.map(o => Math.abs(Number(o.value) || 0));
-    const data = [{
-        type: 'sankey',
-        orientation: 'h',
-        node: {
-            pad: 15,
-            thickness: 20,
-            line: { color: 'black', width: 0.5 },
-            label: labels,
-            color: ['#3b82f6', ...outputs.map(() => '#f59e42')]
-        },
-        link: {
-            source: source,
-            target: target,
-            value: values,
-            color: outputs.map(() => 'rgba(59,130,246,0.3)')
-        }
-    }];
-    const layout = {
-        font: { size: 14 },
-        autosize: true,
-        margin: { l: 0, r: 0, t: 10, b: 0 },
-        width: null,
-        height: 100
-    };
-    Plotly.react(container, data, layout, {responsive: true});
-}
-
-export function renderPlotlySankeyChartMultiLevel(containerId, nodes, links) {
-    const container = document.getElementById(containerId);
-    if (!container) return;
-    const data = [{
-        type: 'sankey',
-        orientation: 'h',
-        node: {
-            pad: 15,
-            thickness: 20,
-            line: { color: 'black', width: 0.5 },
-            label: nodes,
-            color: nodes.map((_, i) => i === 0 ? '#3b82f6' : (i === 1 ? '#f59e42' : '#a3e635'))
-        },
-        link: {
-            source: links.map(l => l.source),
-            target: links.map(l => l.target),
-            value: links.map(l => Math.abs(Number(l.value) || 0)),
-            color: links.map(() => 'rgba(59,130,246,0.3)')
-        }
-    }];
-    const layout = {
-        font: { size: 14 },
-        autosize: true,
-        margin: { l: 0, r: 0, t: 10, b: 0 },
-        width: null,
-        height: 400
-    };
-    Plotly.react(container, data, layout, {responsive: true});
-}
-
-export {
-    prepareChartData,
-    setupDualSlider,
-    initFinancialChart
-};

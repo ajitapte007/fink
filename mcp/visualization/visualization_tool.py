@@ -12,7 +12,64 @@ from data.process_utils import get_aligned_historical_data
 
 from data.fetch_utils import FUNCTIONS, get_db_cache
 
-def generate_visualization_html(ticker: str, selected_metrics: list = None, start_year: int = None, end_year: int = None) -> str:
+import json
+from data.process_utils import get_aligned_historical_data
+from data.fetch_utils import FUNCTIONS, get_db_cache
+from data.models import VALID_METRIC_KEYS
+
+METRICS_CONFIG = [
+    { "id": "price", "label": "Stock Price", "category": "Aggregates", "defaultAxis": "y", "isAggregate": False, "color": "#3b82f6" },
+    { "id": "revenue", "label": "Revenue", "category": "Aggregates", "defaultAxis": "y", "isAggregate": True, "color": "#ec4899" },
+    { "id": "cost_of_goods_sold", "label": "COGS", "category": "Aggregates", "defaultAxis": "y", "isAggregate": True, "color": "#ef4444" },
+    { "id": "operating_income", "label": "Operating Income", "category": "Aggregates", "defaultAxis": "y", "isAggregate": True, "color": "#10b981" },
+    { "id": "net_income", "label": "Net Income", "category": "Aggregates", "defaultAxis": "y", "isAggregate": True, "color": "#6366f1" },
+    { "id": "operating_cash_flow", "label": "Operating Cash Flow", "category": "Aggregates", "defaultAxis": "y", "isAggregate": True, "color": "#06b6d4" },
+    { "id": "capex", "label": "CapEx", "category": "Aggregates", "defaultAxis": "y", "isAggregate": True, "color": "#f97316" },
+    { "id": "free_cash_flow", "label": "Free Cash Flow", "category": "Aggregates", "defaultAxis": "y", "isAggregate": True, "color": "#8b5cf6" },
+    { "id": "selling_general_admin", "label": "SG&A Expenses", "category": "Aggregates", "defaultAxis": "y", "isAggregate": True, "color": "#f43f5e" },
+    { "id": "research_development", "label": "R&D Expenses", "category": "Aggregates", "defaultAxis": "y", "isAggregate": True, "color": "#eab308" },
+    { "id": "stock_based_compensation", "label": "Stock-Based Comp", "category": "Aggregates", "defaultAxis": "y", "isAggregate": True, "color": "#a855f7" },
+    { "id": "share_repurchase", "label": "Share Repurchases", "category": "Aggregates", "defaultAxis": "y", "isAggregate": True, "color": "#d946ef" },
+    { "id": "cash_and_equivalents", "label": "Cash & Equivalents", "category": "Aggregates", "defaultAxis": "y", "isAggregate": True, "color": "#14b8a6" },
+    { "id": "total_debt", "label": "Total Debt", "category": "Aggregates", "defaultAxis": "y", "isAggregate": True, "color": "#64748b" },
+    { "id": "market_cap", "label": "Market Cap", "category": "Aggregates", "defaultAxis": "y", "isAggregate": True, "color": "#0284c7" },
+    { "id": "enterprise_value", "label": "Enterprise Value", "category": "Aggregates", "defaultAxis": "y", "isAggregate": True, "color": "#334155" },
+    { "id": "ebitda", "label": "EBITDA", "category": "Aggregates", "defaultAxis": "y", "isAggregate": True, "color": "#ec4899" },
+    
+    # Valuation Ratios
+    { "id": "pe_ratio", "label": "P/E (TTM)", "category": "Valuation Ratios", "defaultAxis": "y1", "isAggregate": False, "color": "#10b981" },
+    { "id": "ps_ratio", "label": "P/S (TTM)", "category": "Valuation Ratios", "defaultAxis": "y1", "isAggregate": False, "color": "#a78bfa" },
+    { "id": "pfcf_ratio", "label": "P/FCF (TTM)", "category": "Valuation Ratios", "defaultAxis": "y1", "isAggregate": False, "color": "#f97316" },
+    { "id": "pocf_ratio", "label": "P/OCF (TTM)", "category": "Valuation Ratios", "defaultAxis": "y1", "isAggregate": False, "color": "#06b6d4" },
+    { "id": "ev_ebitda", "label": "EV/EBITDA (TTM)", "category": "Valuation Ratios", "defaultAxis": "y1", "isAggregate": False, "color": "#f43f5e" },
+    
+    # Shareholder Return
+    { "id": "shares_outstanding", "label": "Shares Outstanding", "category": "Shareholder Return", "defaultAxis": "y1", "isAggregate": False, "color": "#6366f1" },
+    { "id": "dividends", "label": "Dividends", "category": "Shareholder Return", "defaultAxis": "y", "isAggregate": False, "color": "#ef4444" },
+    { "id": "dividend_yield", "label": "Dividend Yield (%) (TTM)", "category": "Shareholder Return", "defaultAxis": "y1", "isAggregate": False, "color": "#f43f5e" },
+    { "id": "payout_ratio_fcf", "label": "Payout Ratio (FCF %)", "category": "Shareholder Return", "defaultAxis": "y1", "isAggregate": False, "color": "#eab308" },
+    { "id": "payout_ratio_ocf", "label": "Payout Ratio (OCF %)", "category": "Shareholder Return", "defaultAxis": "y1", "isAggregate": False, "color": "#a855f7" },
+    
+    # Performance & Efficiency
+    { "id": "roic", "label": "ROIC (%)", "category": "Performance & Efficiency", "defaultAxis": "y1", "isAggregate": False, "color": "#14b8a6" },
+    { "id": "operating_margin", "label": "Operating Margin (%)", "category": "Performance & Efficiency", "defaultAxis": "y1", "isAggregate": False, "color": "#3b82f6" },
+    { "id": "profit_margin", "label": "Net Margin (%)", "category": "Performance & Efficiency", "defaultAxis": "y1", "isAggregate": False, "color": "#6366f1" },
+    { "id": "gross_margin", "label": "Gross Margin (%)", "category": "Performance & Efficiency", "defaultAxis": "y1", "isAggregate": False, "color": "#10b981" },
+    { "id": "roa", "label": "ROA (%)", "category": "Performance & Efficiency", "defaultAxis": "y1", "isAggregate": False, "color": "#ec4899" },
+    { "id": "roe", "label": "ROE (%)", "category": "Performance & Efficiency", "defaultAxis": "y1", "isAggregate": False, "color": "#0284c7" }
+]
+
+def generate_visualization_html(
+    ticker: str,
+    selected_metrics: list = None,
+    start_year: int = None,
+    end_year: int = None,
+    normalize: bool = False,
+    per_share_metrics: list = None,
+    left_axis_metrics: list = None,
+    right_axis_metrics: list = None,
+    growth_rate_yoy: bool = False
+) -> str:
     """
     Generates interactive HTML visualization markdown block for Chart.js from aligned financial history.
     Reads data directly from the shared SQLite cache DB and prunes based on selected metrics and timeframe.
@@ -23,6 +80,13 @@ def generate_visualization_html(ticker: str, selected_metrics: list = None, star
         
     if not selected_metrics:
         selected_metrics = ["price"]
+        
+    if per_share_metrics is None:
+        per_share_metrics = []
+    if left_axis_metrics is None:
+        left_axis_metrics = []
+    if right_axis_metrics is None:
+        right_axis_metrics = []
         
     # Read the full dataset directly from the SQLite database cache
     raw_cache = {}
@@ -37,26 +101,45 @@ def generate_visualization_html(ticker: str, selected_metrics: list = None, star
     import datetime
     raw_cache["_meta_last_refreshed"] = datetime.datetime.fromtimestamp(last_timestamp).strftime('%Y-%m-%d %H:%M:%S')
 
+    # Get Corporate identity for branding
+    from data.process_utils import get_corporate_identity
+    overview = raw_cache.get("OVERVIEW", {})
+    company_name = overview.get("Name", ticker)
+    identity = get_corporate_identity(raw_cache)
+    
+    sector = overview.get("Sector") or (identity.sector if identity else "Unknown")
+    industry = overview.get("Industry") or (identity.industry if identity else "Unknown")
+    country = overview.get("Country") or (identity.country if identity else "US")
+    
+    raw_mcap = overview.get("MarketCapitalization") or (str(identity.market_cap) if identity and identity.market_cap else None)
+    if raw_mcap and raw_mcap.isdigit():
+        mval = int(raw_mcap)
+        if mval >= 1e12:
+            market_cap = f"${mval / 1e12:.2f}T"
+        elif mval >= 1e9:
+            market_cap = f"${mval / 1e9:.2f}B"
+        elif mval >= 1e6:
+            market_cap = f"${mval / 1e6:.2f}M"
+        else:
+            market_cap = f"${mval:,}"
+    else:
+        market_cap = raw_mcap or "Unknown"
+        
+    last_closing_price = "N/A"
+    if identity and identity.last_closing_price and identity.last_closing_price != "N/A":
+        try:
+            last_closing_price = f"${float(identity.last_closing_price):.2f}"
+        except ValueError:
+            last_closing_price = f"${identity.last_closing_price}"
+
     # Process and align historical time series
     try:
         aligned_points = get_aligned_historical_data(raw_cache)
     except Exception as e:
-        return f"<div style='color: #ef4444; padding: 15px; background: #1e293b; border-radius: 8px;'>Error aligning historical data: {str(e)}</div>"
+        return f"<div style='color: #ef4444; padding: 15px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;'>Error aligning historical data: {str(e)}</div>"
         
     # Standard raw metrics alignment container
-    aligned_metrics = {
-        "price": {},
-        "revenue": {},
-        "operating_income": {},
-        "net_income": {},
-        "free_cash_flow": {},
-        "roic": {},
-        "eps": {},
-        "pe_ratio": {},
-        "ps_ratio": {},
-        "shares_outstanding": {},
-        "dividends": {}
-    }
+    aligned_metrics = {k: {} for k in VALID_METRIC_KEYS}
     
     for pt in aligned_points:
         pt_dict = pt.model_dump() if hasattr(pt, "model_dump") else pt.dict()
@@ -66,7 +149,7 @@ def generate_visualization_html(ticker: str, selected_metrics: list = None, star
             if val is not None:
                 aligned_metrics[metric_key][date_str] = val
                 
-    # Keep all aligned metrics in the JSON dump to enable full checkbox and timeline slider interactivity in the UI
+    # Keep all aligned metrics in the JSON dump
     processed_metrics = aligned_metrics
                 
     # Write the data to a static JSON file to prevent code bloat and truncation
@@ -77,21 +160,56 @@ def generate_visualization_html(ticker: str, selected_metrics: list = None, star
     with open(data_file_path, "w", encoding="utf-8") as f:
         json.dump(processed_metrics, f)
         
-    metrics_config = [
-        { "id": "price", "label": "Stock Price ($)", "color": "#3b82f6", "axis": "y" },
-        { "id": "pe_ratio", "label": "P/E Ratio", "color": "#10b981", "axis": "y1" },
-        { "id": "eps", "label": "EPS ($)", "color": "#f59e0b", "axis": "y1" },
-        { "id": "revenue", "label": "Revenue ($)", "color": "#ec4899", "axis": "y" },
-        { "id": "free_cash_flow", "label": "Free Cash Flow ($)", "color": "#8b5cf6", "axis": "y" },
-        { "id": "shares_outstanding", "label": "Shares Outstanding", "color": "#06b6d4", "axis": "y1" },
-        { "id": "ps_ratio", "label": "P/S Ratio", "color": "#a78bfa", "axis": "y1" }
-    ]
-    
-    def is_checked(m_id):
-        return "checked" if m_id in selected_metrics else ""
-        
     start_date_str = f"{start_year}-01-01" if start_year else ""
     end_date_str = f"{end_year}-12-31" if end_year else ""
+    
+    # Re-structure categories
+    categories = ["Aggregates", "Valuation Ratios", "Shareholder Return", "Performance & Efficiency"]
+    
+    control_rows_html = ""
+    for cat in categories:
+        control_rows_html += f'<div class="category-header">{cat}</div>\n'
+        cat_metrics = [m for m in METRICS_CONFIG if m["category"] == cat]
+        for m in cat_metrics:
+            m_id = m["id"]
+            checked_attr = "checked" if m_id in selected_metrics else ""
+            
+            # Per share toggle (only for aggregates)
+            sh_toggle_html = ""
+            if m["isAggregate"]:
+                is_sh_active = "active" if m_id in per_share_metrics else ""
+                sh_toggle_html = f'<button class="toggle-sh {is_sh_active}" id="sh-{m_id}" onclick="togglePerShare(\'{m_id}\')">$/sh</button>'
+                
+            # L/R Axis toggle selector
+            default_axis = m["defaultAxis"]
+            # Check overrides
+            if m_id in left_axis_metrics:
+                default_axis = "y"
+            elif m_id in right_axis_metrics:
+                default_axis = "y1"
+                
+            axis_l_active = "active" if default_axis == "y" else ""
+            axis_r_active = "active" if default_axis == "y1" else ""
+            
+            axis_toggle_html = f"""
+            <div class="axis-selector" id="axis-selector-{m_id}">
+                <button class="btn-axis {axis_l_active}" onclick="setMetricAxis('{m_id}', 'y')">L</button>
+                <button class="btn-axis {axis_r_active}" onclick="setMetricAxis('{m_id}', 'y1')">R</button>
+            </div>
+            """
+            
+            control_rows_html += f"""
+            <div class="metric-row">
+              <label class="control-label" style="color: {m['color']};">
+                <input type="checkbox" id="metric-{m_id}" {checked_attr} onchange="onMetricCheckedChange('{m_id}')">
+                <span>{m['label']}</span>
+              </label>
+              <div class="metric-controls">
+                {sh_toggle_html}
+                {axis_toggle_html}
+              </div>
+            </div>
+            """
         
     html = f"""<!DOCTYPE html>
 <html>
@@ -100,41 +218,12 @@ def generate_visualization_html(ticker: str, selected_metrics: list = None, star
   <title>Financial Dashboard - {ticker}</title>
   <script>
     window.currentTicker = "{ticker}";
+    window.initialTransform = "{'yoy' if growth_rate_yoy else ('normalize' if normalize else '')}" || null;
+    window.initialPerShareMetrics = {json.dumps(per_share_metrics)};
+    window.initialLeftAxisMetrics = {json.dumps(left_axis_metrics)};
+    window.initialRightAxisMetrics = {json.dumps(right_axis_metrics)};
+    window.metricsConfig = {json.dumps(METRICS_CONFIG)};
     
-    // Check if a parent chart already exists in the chat thread to perform an in-place update
-    try {{
-      const parentDoc = window.parent.document;
-      const iframes = Array.from(parentDoc.querySelectorAll("iframe"));
-      const myFrame = window.frameElement;
-      
-      const activeFrame = iframes.find(iframe => 
-        iframe !== myFrame && 
-        iframe.contentDocument && 
-        iframe.contentDocument.getElementById("financialChart") &&
-        iframe.contentWindow.currentTicker === "{ticker}"
-      );
-      
-      if (activeFrame) {{
-        // Trigger update in the existing frame
-        activeFrame.contentWindow.updateChartParameters({{
-          metrics: {json.dumps(selected_metrics)},
-          startDate: "{start_date_str}",
-          endDate: "{end_date_str}"
-        }});
-        
-        // Hide the new message bubble to avoid clutter
-        if (myFrame) {{
-          myFrame.style.display = "none";
-          const bubble = myFrame.closest(".chat-bubble");
-          if (bubble) bubble.style.display = "none";
-        }}
-        // Stop execution to prevent loading components in the duplicate frame
-        window.stop();
-      }}
-    }} catch (e) {{
-      console.warn("Could not check/update existing chart frame:", e);
-    }}
-
     // Detect parent origin dynamically to support sandboxed Web Previews
     let parentOrigin = "http://localhost:3000";
     try {{
@@ -172,14 +261,39 @@ def generate_visualization_html(ticker: str, selected_metrics: list = None, star
         window.initFinancialChart({{
           ticker: "{ticker}",
           dataUrl: parentOrigin + "/static/fink/{data_file_name}",
-          metricsConfig: {json.dumps(metrics_config)},
+          metricsConfig: window.metricsConfig,
           initialMetrics: {json.dumps(selected_metrics)},
           initialStartDate: "{start_date_str}",
-          initialEndDate: "{end_date_str}"
+          initialEndDate: "{end_date_str}",
+          initialTransform: window.initialTransform,
+          initialPerShareMetrics: window.initialPerShareMetrics,
+          initialLeftAxisMetrics: window.initialLeftAxisMetrics,
+          initialRightAxisMetrics: window.initialRightAxisMetrics
         }});
       }};
       document.body.appendChild(scriptUtils);
     }}
+
+    window.updateTransformPills = function() {{
+        const btnNormalize = document.getElementById("btn-normalize");
+        const btnYoy = document.getElementById("btn-yoy");
+        if (!btnNormalize || !btnYoy) return;
+        
+        btnNormalize.classList.toggle("active", window.currentTransform === "normalize");
+        btnYoy.classList.toggle("active", window.currentTransform === "yoy");
+    }};
+    
+    window.toggleTransform = function(type) {{
+        if (window.currentTransform === type) {{
+            window.currentTransform = null;
+        }} else {{
+            window.currentTransform = type;
+        }}
+        window.updateTransformPills();
+        if (window.updateChart) {{
+            window.updateChart();
+        }}
+    }};
 
     document.addEventListener("DOMContentLoaded", () => {{
       document.body.appendChild(scriptChart);
@@ -189,35 +303,58 @@ def generate_visualization_html(ticker: str, selected_metrics: list = None, star
 <body>
   <div class="dashboard">
     <div class="controls">
-      <div class="dashboard-header" style="margin-bottom: 15px; border-bottom: 1px solid #334155; padding-bottom: 8px;">
-        <h1 class="dashboard-title" style="margin: 0; font-size: 16px; color: #f8fafc; font-family: sans-serif; font-weight: 600;">{ticker}</h1>
+      <div class="dashboard-header" style="margin-bottom: 12px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+        <img class="company-logo" src="https://img.logo.dev/ticker/{ticker.lower()}?token=pk_XJle0jznTP6QpTk_Dssexg" onerror="this.style.display='none';" style="width: 24px; height: 24px; border-radius: 4px;" />
+        <div>
+            <h1 class="dashboard-title" style="margin: 0; font-size: 14px; color: #0f172a; font-family: sans-serif; font-weight: 700; line-height: 1.2;">{ticker}</h1>
+            <div class="company-name-label" style="font-size: 11px; color: #64748b; font-family: sans-serif; font-weight: 500;">{company_name}</div>
+        </div>
       </div>
-      <div class="section-title">Metrics</div>
-      <div class="checkbox-group">
-        <label class="control-label" style="color: #3b82f6;"><input type="checkbox" id="metric-price" {is_checked('price')}> Price</label>
-        <label class="control-label" style="color: #10b981;"><input type="checkbox" id="metric-pe_ratio" {is_checked('pe_ratio')}> P/E Ratio</label>
-        <label class="control-label" style="color: #f59e0b;"><input type="checkbox" id="metric-eps" {is_checked('eps')}> EPS</label>
-        <label class="control-label" style="color: #ec4899;"><input type="checkbox" id="metric-revenue" {is_checked('revenue')}> Revenue</label>
-        <label class="control-label" style="color: #8b5cf6;"><input type="checkbox" id="metric-free_cash_flow" {is_checked('free_cash_flow')}> FCF</label>
-        <label class="control-label" style="color: #06b6d4;"><input type="checkbox" id="metric-shares_outstanding" {is_checked('shares_outstanding')}> Shares</label>
-        <label class="control-label" style="color: #a78bfa;"><input type="checkbox" id="metric-ps_ratio" {is_checked('ps_ratio')}> P/S Ratio</label>
+      <div class="metric-group-scrollable checkbox-group">
+        {control_rows_html}
       </div>
-      <div class="section-title">Timeline</div>
-      <div class="timeframe-slider-container">
-        <div class="slider-track"></div>
-        <input type="range" id="leftSlider" class="timeframe-slider" min="0" max="1000" value="0">
-        <input type="range" id="rightSlider" class="timeframe-slider" min="0" max="1000" value="1000">
+      
+      <!-- Mutual Exclusive Data Transformations -->
+      <div class="transform-selectors" style="margin-top: 12px; display: flex; gap: 8px;">
+        <button id="btn-normalize" class="toggle-sh" style="flex: 1; padding: 6px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; text-align: center;" onclick="toggleTransform('normalize')">Normalize (% Growth)</button>
+        <button id="btn-yoy" class="toggle-sh" style="flex: 1; padding: 6px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; text-align: center;" onclick="toggleTransform('yoy')">Growth Rate (YoY %)</button>
       </div>
-      <div style="display: flex; justify-content: space-between; font-size: 11px; color: #cbd5e1; margin-top: 8px;">
-        <span id="slider-start-label"></span>
-        <span id="slider-end-label"></span>
+
+
+
+
+
+      <!-- Company Metadata Panel -->
+      <div class="metadata-panel" style="margin-top: 15px; border-top: 1px solid #e2e8f0; padding-top: 12px; font-family: sans-serif;">
+        <div style="display: flex; flex-direction: column; gap: 6px; font-size: 11px;">
+          <div style="display: flex; justify-content: space-between;"><span style="color: #64748b; font-weight: 500;">Last Closing Price:</span><span style="color: #0f172a; font-weight: 600;">{last_closing_price}</span></div>
+          <div style="display: flex; justify-content: space-between;"><span style="color: #64748b; font-weight: 500;">Market Cap:</span><span style="color: #0f172a; font-weight: 600;">{market_cap}</span></div>
+          <div style="display: flex; justify-content: space-between;"><span style="color: #64748b; font-weight: 500;">Sector:</span><span style="color: #0f172a; font-weight: 600;">{sector}</span></div>
+          <div style="display: flex; justify-content: space-between;"><span style="color: #64748b; font-weight: 500;">Industry:</span><span style="color: #0f172a; font-weight: 600;">{industry}</span></div>
+          <div style="display: flex; justify-content: space-between;"><span style="color: #64748b; font-weight: 500;">HQ Country:</span><span style="color: #0f172a; font-weight: 600;">{country}</span></div>
+        </div>
       </div>
     </div>
     
-    <div class="chart-wrapper">
-      <canvas id="financialChart"></canvas>
+    <div class="chart-wrapper" style="display: flex; flex-direction: column; gap: 15px; flex: 1; min-height: 0;">
+      <div style="flex: 1; min-height: 0; position: relative;">
+        <canvas id="financialChart"></canvas>
+      </div>
+      <!-- Timeline Slider below the chart -->
+      <div class="timeline-container-bottom" style="padding: 12px 20px; background: #f8fafc; border-top: 1px solid #e2e8f0; border-radius: 0 0 12px 12px;">
+        <div class="timeframe-slider-container" style="margin-bottom: 4px;">
+          <div class="slider-track"></div>
+          <input type="range" id="leftSlider" class="timeframe-slider" min="0" max="1000" value="0">
+          <input type="range" id="rightSlider" class="timeframe-slider" min="0" max="1000" value="1000">
+        </div>
+        <div style="display: flex; justify-content: space-between; font-size: 10px; color: #64748b; font-weight: 500;">
+          <span id="slider-start-label"></span>
+          <span id="slider-end-label"></span>
+        </div>
+      </div>
     </div>
   </div>
 </body>
 </html>"""
     return html
+

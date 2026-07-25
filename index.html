@@ -42,29 +42,51 @@
                     <div class="metric-group mb-4">
                         <h3 class="text-md font-semibold text-gray-700 mb-2">Business</h3>
                         <div class="flex flex-col items-start gap-2">
-                            <div class="radio-item">
-                                <input type="radio" id="selectRevenues" name="ratioSelect" value="REVENUES">
-                                <label for="selectRevenues">Revenues</label>
+                            <div class="radio-item flex items-center justify-between w-full">
+                                <div class="flex items-center">
+                                    <input type="radio" id="selectRevenues" name="ratioSelect" value="REVENUES">
+                                    <label for="selectRevenues" class="ml-2 block text-sm text-gray-900">Revenues</label>
+                                </div>
+                                <button type="button" class="per-share-toggle ml-2 px-1 text-2xs border border-gray-300 rounded hover:bg-gray-100" data-metric="revenues">$/sh</button>
                             </div>
-                            <div class="radio-item">
-                                <input type="radio" id="selectNetIncome" name="ratioSelect" value="NET_INCOME">
-                                <label for="selectNetIncome">Net Income</label>
+                            <div class="radio-item flex items-center justify-between w-full">
+                                <div class="flex items-center">
+                                    <input type="radio" id="selectNetIncome" name="ratioSelect" value="NET_INCOME">
+                                    <label for="selectNetIncome" class="ml-2 block text-sm text-gray-900">Net Income</label>
+                                </div>
+                                <button type="button" class="per-share-toggle ml-2 px-1 text-2xs border border-gray-300 rounded hover:bg-gray-100" data-metric="netIncome">$/sh</button>
+                            </div>
+                            <div class="radio-item flex items-center justify-between w-full">
+                                <div class="flex items-center">
+                                    <input type="radio" id="selectEBITDA" name="ratioSelect" value="EBITDA">
+                                    <label for="selectEBITDA" class="ml-2 block text-sm text-gray-900">EBITDA</label>
+                                </div>
+                                <button type="button" class="per-share-toggle ml-2 px-1 text-2xs border border-gray-300 rounded hover:bg-gray-100" data-metric="ebitda">$/sh</button>
                             </div>
                             <div class="radio-item">
                                 <input type="radio" id="selectEPS" name="ratioSelect" value="EPS">
                                 <label for="selectEPS">EPS (Annual)</label>
                             </div>
-                            <div class="radio-item">
-                                <input type="radio" id="selectCapex" name="ratioSelect" value="CAPEX">
-                                <label for="selectCapex">Capital Expenditures</label>
+                            <div class="radio-item flex items-center justify-between w-full">
+                                <div class="flex items-center">
+                                    <input type="radio" id="selectCapex" name="ratioSelect" value="CAPEX">
+                                    <label for="selectCapex" class="ml-2 block text-sm text-gray-900">Capital Expenditures</label>
+                                </div>
+                                <button type="button" class="per-share-toggle ml-2 px-1 text-2xs border border-gray-300 rounded hover:bg-gray-100" data-metric="capitalExpenditures">$/sh</button>
                             </div>
-                            <div class="radio-item">
-                                <input type="radio" id="selectFCF" name="ratioSelect" value="FCF">
-                                <label for="selectFCF">Free Cash Flow (FCF)</label>
+                            <div class="radio-item flex items-center justify-between w-full">
+                                <div class="flex items-center">
+                                    <input type="radio" id="selectFCF" name="ratioSelect" value="FCF">
+                                    <label for="selectFCF" class="ml-2 block text-sm text-gray-900">Free Cash Flow (FCF)</label>
+                                </div>
+                                <button type="button" class="per-share-toggle ml-2 px-1 text-2xs border border-gray-300 rounded hover:bg-gray-100" data-metric="fcf">$/sh</button>
                             </div>
-                            <div class="radio-item">
-                                <input type="radio" id="selectOperatingCashflow" name="ratioSelect" value="OPERATING_CASHFLOW">
-                                <label for="selectOperatingCashflow">Operating Cash Flow (OCF)</label>
+                            <div class="radio-item flex items-center justify-between w-full">
+                                <div class="flex items-center">
+                                    <input type="radio" id="selectOperatingCashflow" name="ratioSelect" value="OPERATING_CASHFLOW">
+                                    <label for="selectOperatingCashflow" class="ml-2 block text-sm text-gray-900">Operating Cash Flow (OCF)</label>
+                                </div>
+                                <button type="button" class="per-share-toggle ml-2 px-1 text-2xs border border-gray-300 rounded hover:bg-gray-100" data-metric="operatingCashflow">$/sh</button>
                             </div>
                         </div>
                     </div>
@@ -88,19 +110,26 @@
                                 <input type="radio" id="selectPOcfRatio" name="ratioSelect" class="h-4 w-4 text-blue-600 border-gray-300" value="POCF">
                                 <label for="selectPOcfRatio" class="ml-2 block text-sm text-gray-900">P/OCF</label>
                             </div>
+                            <div class="flex items-center">
+                                <input type="radio" id="selectEvEbitda" name="ratioSelect" class="h-4 w-4 text-blue-600 border-gray-300" value="EV_EBITDA">
+                                <label for="selectEvEbitda" class="ml-2 block text-sm text-gray-900">EV/EBITDA</label>
+                            </div>
                         </div>
                     </div>
 
-                    <div class="metric-group">
+                    <div class="metric-group mb-4">
                         <h3 class="text-md font-semibold text-gray-700 mb-2">Shareholders</h3>
                         <div class="flex flex-col items-start gap-2">
                             <div class="flex items-center">
                                 <input type="radio" id="selectSharesOutstanding" name="ratioSelect" class="h-4 w-4 text-blue-600 border-gray-300" value="SO">
                                 <label for="selectSharesOutstanding" class="ml-2 block text-sm text-gray-900">Shares Outstanding</label>
                             </div>
-                            <div class="flex items-center">
-                                <input type="radio" id="selectDividends" name="ratioSelect" class="h-4 w-4 text-blue-600 border-gray-300" value="DIVIDENDS">
-                                <label for="selectDividends" class="ml-2 block text-sm text-gray-900">Dividends (TTM)</label>
+                            <div class="flex items-center justify-between w-full">
+                                <div class="flex items-center">
+                                    <input type="radio" id="selectDividends" name="ratioSelect" class="h-4 w-4 text-blue-600 border-gray-300" value="DIVIDENDS">
+                                    <label for="selectDividends" class="ml-2 block text-sm text-gray-900">Dividends</label>
+                                </div>
+                                <button type="button" class="per-share-toggle ml-2 px-1 text-2xs border border-gray-300 rounded hover:bg-gray-100" data-metric="dividendPayout">$/sh</button>
                             </div>
                             <div class="flex items-center">
                                 <input type="radio" id="selectDividendYield" name="ratioSelect" class="h-4 w-4 text-blue-600 border-gray-300" value="DIVYIELD">
@@ -116,21 +145,62 @@
                             </div>
                         </div>
                     </div>
+
+                    <div class="metric-group mb-4">
+                        <h3 class="text-md font-semibold text-gray-700 mb-2">Performance</h3>
+                        <div class="flex flex-col items-start gap-2">
+                            <div class="flex items-center">
+                                <input type="radio" id="selectROA" name="ratioSelect" class="h-4 w-4 text-blue-600 border-gray-300" value="ROA">
+                                <label for="selectROA" class="ml-2 block text-sm text-gray-900">ROA</label>
+                            </div>
+                            <div class="flex items-center">
+                                <input type="radio" id="selectROE" name="ratioSelect" class="h-4 w-4 text-blue-600 border-gray-300" value="ROE">
+                                <label for="selectROE" class="ml-2 block text-sm text-gray-900">ROE</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="metric-group mb-4">
+                        <h3 class="text-md font-semibold text-gray-700 mb-2">Aggregates</h3>
+                        <div class="flex flex-col items-start gap-2">
+                            <div class="flex items-center flex-between w-full">
+                                <div class="flex items-center">
+                                    <input type="radio" id="selectEV" name="ratioSelect" class="h-4 w-4 text-blue-600 border-gray-300" value="EV">
+                                    <label for="selectEV" class="ml-2 block text-sm text-gray-900">Enterprise Value (EV)</label>
+                                </div>
+                                <button type="button" class="per-share-toggle ml-2 px-1 text-2xs border border-gray-300 rounded hover:bg-gray-100" data-metric="enterpriseValue">$/sh</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
             <!-- Right Panel for Chart -->
-            <div class="panel right-panel">
-                <div id="timeframeSlider" class="timeframe-slider-container mb-4">
-                    <div class="slider-labels">
-                        <span id="year-range-label">20 years ago - Today</span>
+            <div class="panel right-panel relative">
+                <div class="flex justify-between items-center mb-4">
+                    <div id="timeframeSlider" class="timeframe-slider-container mb-0 flex-grow mr-4" style="min-width: 0;">
+                        <div class="slider-labels">
+                            <span id="year-range-label">20 years ago - Today</span>
+                        </div>
+                        <div class="slider-track"></div>
+                        <input type="range" id="leftSlider" class="timeframe-slider" min="0" max="20" value="0" step="1">
+                        <input type="range" id="rightSlider" class="timeframe-slider" min="0" max="20" value="20" step="1">
                     </div>
-                    <div class="slider-track"></div>
-                    <input type="range" id="leftSlider" class="timeframe-slider" min="0" max="20" value="0" step="1">
-                    <input type="range" id="rightSlider" class="timeframe-slider" min="0" max="20" value="20" step="1">
+                    <button id="downloadPngBtn" class="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-1.5 px-3 rounded shadow text-xs whitespace-nowrap">Download PNG</button>
                 </div>
                 <div class="w-full flex justify-center mt-6">
-                    <div class="chart-container">
+                    <div class="chart-container relative">
                         <canvas id="priceChart"></canvas>
+                    </div>
+                </div>
+                <!-- Bottom Panel for Company Metadata -->
+                <div id="companyMetadataPanel" class="mt-6 p-4 bg-gray-50 border border-gray-200 rounded-lg hidden">
+                    <h3 class="text-sm font-semibold text-gray-700 mb-2">Company Metadata</h3>
+                    <div class="grid grid-cols-2 md:grid-cols-5 gap-4 text-xs text-gray-600">
+                        <div><b>Last Day's Close:</b> <span id="metaClosePrice">N/A</span></div>
+                        <div><b>Last Day's Market Cap:</b> <span id="metaMarketCap">N/A</span></div>
+                        <div><b>Sector:</b> <span id="metaSector">N/A</span></div>
+                        <div><b>Industry:</b> <span id="metaIndustry">N/A</span></div>
+                        <div><b>Country:</b> <span id="metaCountry">N/A</span></div>
                     </div>
                 </div>
             </div>

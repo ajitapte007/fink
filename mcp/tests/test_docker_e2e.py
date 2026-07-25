@@ -163,7 +163,8 @@ def test_native_tool_execution():
     html_payload = event["data"]["embeds"][0]
     
     # Verify the html code was adapted from the MCP response
-    assert "<!DOCTYPE html>" in html_payload
+    assert "<iframe" in html_payload
+    assert "DOCTYPE" in html_payload
     assert "chartUtils.js" in html_payload
     assert "unh-data.json" in html_payload
     print("[NATIVE TOOL TEST] Success! Native tool execution and event emission verified.")

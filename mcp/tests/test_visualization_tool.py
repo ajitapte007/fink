@@ -25,5 +25,32 @@ def test_generate_visualization_html():
     assert 'initialStartDate: "2018-01-01"' in html
     assert 'initialEndDate: "2023-12-31"' in html
     
-    # Verify header layout displays only the ticker name
-    assert '<h1 class="dashboard-title" style="margin: 0; font-size: 16px; color: #f8fafc; font-family: sans-serif; font-weight: 600;">AMZN</h1>' in html
+    # Verify header layout displays the ticker and company name
+    assert 'class="dashboard-title"' in html
+    assert 'AMZN' in html
+    assert 'company-logo' in html
+
+
+
+    # Verify metadata fields are present and displayed in the correct order:
+    # Last Closing Price, Market Cap, Sector, Industry, HQ Country
+    idx_price = html.index("Last Closing Price:")
+    idx_mcap = html.index("Market Cap:")
+    idx_sector = html.index("Sector:")
+    idx_industry = html.index("Industry:")
+    idx_country = html.index("HQ Country:")
+    assert idx_price < idx_mcap < idx_sector < idx_industry < idx_country
+
+    # Verify timeline slider is positioned inside chart-wrapper
+    idx_chart_wrapper = html.index('class="chart-wrapper"')
+    idx_timeline_slider = html.index('class="timeframe-slider-container"')
+    assert idx_chart_wrapper < idx_timeline_slider
+
+def test_generate_visualization_html_normalize():
+    html = generate_visualization_html("AMZN", selected_metrics=["price"], normalize=True)
+    assert 'window.initialTransform = "normalize"' in html
+
+def test_generate_visualization_html_growth_rate_yoy():
+    html = generate_visualization_html("AMZN", selected_metrics=["price"], growth_rate_yoy=True)
+    assert 'window.initialTransform = "yoy"' in html
+
