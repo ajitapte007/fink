@@ -9,3 +9,4 @@ agent/.venv/
 open_webui/static/chart-*.html
 venv/
 open_webui/static/*-data.json
+mcp/scratch/
