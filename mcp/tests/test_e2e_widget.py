@@ -3,7 +3,7 @@ import pytest
 from playwright.sync_api import sync_playwright
 from data.alphavantage_tool import fetch_alphavantage_data
 from metrics_registry import METRICS_REGISTRY
-from visualization.visualization_tool import generate_visualization_html
+from visualization.visualization_tool import generate_visualization_html, get_static_dir
 
 # Chart dataset labels are built from the registry (plus an axis suffix), so derive
 # expected labels from the same source rather than hardcoding display strings.
@@ -31,7 +31,7 @@ def test_playwright_e2e_chart_render():
         # stale artifact could keep this test green while the real file is broken.
         chart_utils_path = Path(__file__).parent.parent / "visualization" / "chartUtils.js"
         dashboard_css_path = static_dir / "dashboard.css"
-        data_json_path = static_dir / "amzn-data.json"
+        data_json_path = get_static_dir() / "amzn-data.json"
         
         # Add request logging
         page.on("console", lambda msg: print(f"[PLAYWRIGHT CONSOLE] {msg.text}"))
@@ -170,8 +170,9 @@ def _open_chart(p, ticker="AMZN", metrics=None, **kwargs):
     page.route("**/static/fink/chart.js", _serve(static / "chart.js"))
     page.route("**/static/fink/dashboard.css", _serve(static / "dashboard.css"))
     page.route("**/static/fink/chartUtils.js", _serve(canonical_utils))
+    # Generated JSON lives in FINK_STATIC_DIR (a tmp dir under test), not the repo.
     page.route(f"**/static/fink/{ticker.lower()}-data.json",
-               _serve(static / f"{ticker.lower()}-data.json"))
+               _serve(get_static_dir() / f"{ticker.lower()}-data.json"))
     # The header logo is fetched from an external CDN; stub it so tests never
     # depend on network egress.
     page.route("**/img.logo.dev/**", lambda route: route.abort())

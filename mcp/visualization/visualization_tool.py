@@ -1,4 +1,5 @@
 # mcp/visualization/visualization_tool.py
+import os
 import sys
 from pathlib import Path
 
@@ -19,6 +20,20 @@ from data.models import VALID_METRIC_KEYS
 
 from metrics_registry import METRICS_REGISTRY as METRICS_CONFIG
 from metrics_registry import DEFAULT_CHART_METRICS
+
+
+def get_static_dir() -> Path:
+    """Directory that per-ticker chart JSON is written to.
+
+    Defaults to open_webui/static/, which docker-compose bind-mounts into the container
+    and serves at /static/fink/. Overridable via FINK_STATIC_DIR so the test suite can
+    write to a tmp dir instead of mutating the working tree — rendering a chart is
+    otherwise a side effect on tracked-adjacent files.
+    """
+    override = os.getenv("FINK_STATIC_DIR")
+    if override:
+        return Path(override)
+    return Path(__file__).parent.parent.parent / "open_webui" / "static"
 
 def generate_visualization_html(
     ticker: str,
@@ -114,7 +129,7 @@ def generate_visualization_html(
     processed_metrics = aligned_metrics
 
     # Write the data to a static JSON file to prevent code bloat and truncation
-    static_dir = Path(__file__).parent.parent.parent / "open_webui" / "static"
+    static_dir = get_static_dir()
     static_dir.mkdir(parents=True, exist_ok=True)
     data_file_name = f"{ticker.lower()}-data.json"
     data_file_path = static_dir / data_file_name

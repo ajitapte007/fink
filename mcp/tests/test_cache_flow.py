@@ -1,14 +1,7 @@
 # mcp/tests/test_cache_flow.py
-import os
-import sys
+# sys.path is handled by conftest.py.
 import time
 import sqlite3
-from pathlib import Path
-
-# Add project root to sys.path
-mcp_dir = Path(__file__).parent.parent.resolve()
-if str(mcp_dir) not in sys.path:
-    sys.path.insert(0, str(mcp_dir))
 
 from data.fetch_utils import get_av_data, init_db, get_db_path
 

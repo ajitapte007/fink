@@ -65,18 +65,10 @@ class Tools:
                     return f"Error calling visualization server: {response.text}"
                 
                 mcp_res = response.json()
-                raw_html_block = mcp_res if isinstance(mcp_res, str) else mcp_res.get("result", "")
-                if not raw_html_block:
+                html_content = mcp_res if isinstance(mcp_res, str) else mcp_res.get("result", "")
+                if not html_content:
                     return "No content returned from visualization server."
-                
-                # Extract HTML block from markdown wrapper
-                html_content = raw_html_block
-                if "```html" in raw_html_block:
-                    import re
-                    match = re.search(r'```html\s*(.*?)\s*```', raw_html_block, re.DOTALL)
-                    if match:
-                        html_content = match.group(1)
-                
+
                 # Emit Svelte Rich UI Embed event to mount the iframe inside the chat bubble
                 if __event_emitter__:
                     await __event_emitter__({

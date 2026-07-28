@@ -1,15 +1,11 @@
-"""Tests for data.cache_orchestrator — cache_ticker_data() thread safety and fetch logic."""
-import sys
+"""Tests for data.cache_orchestrator — cache_ticker_data() thread safety and fetch logic.
+
+sys.path is handled by conftest.py.
+"""
 import threading
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-
-# Ensure mcp/ is on sys.path
-mcp_dir = Path(__file__).parent.parent.resolve()
-if str(mcp_dir) not in sys.path:
-    sys.path.insert(0, str(mcp_dir))
 
 from data.cache_orchestrator import cache_ticker_data, _ticker_locks
 

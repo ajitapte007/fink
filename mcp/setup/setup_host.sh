@@ -7,7 +7,8 @@ if [ ! -d "venv" ]; then
 fi
 echo "📥 Installing dependency libraries..."
 venv/bin/pip install --upgrade pip
-venv/bin/pip install -r mcp/requirements.txt
+# requirements-dev.txt includes requirements.txt via -r, so this covers both.
+venv/bin/pip install -r mcp/requirements-dev.txt
 echo "🎭 Installing Playwright browser binaries..."
 venv/bin/playwright install chromium
 echo "✅ Host environment setup complete."

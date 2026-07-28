@@ -13,6 +13,7 @@ layouts and should not inherit this path configuration.
 """
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 MCP_DIR = Path(__file__).parent.parent.resolve()
@@ -26,6 +27,15 @@ if str(MCP_DIR) not in sys.path:
 # `mock_data=True` alone was never enough: it only *prefers* the seed corpus and falls
 # through to the live API for tickers it doesn't have. Seed mode makes that a hard error.
 os.environ.setdefault("FINK_DATA_MODE", "seed")
+
+# Redirect generated per-ticker chart JSON to a temp dir. Rendering a chart writes
+# open_webui/static/{ticker}-data.json, so without this the suite mutates the working
+# tree on every run — which previously made a stale artifact look like a real failure.
+# Tracked assets (chart.js, dashboard.css) still come from the repo; only generated
+# output moves.
+os.environ.setdefault(
+    "FINK_STATIC_DIR", tempfile.mkdtemp(prefix="fink-static-")
+)
 
 
 def pytest_configure(config):

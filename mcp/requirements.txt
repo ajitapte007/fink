@@ -1,13 +1,12 @@
-mcp>=0.1.0
-fastmcp>=0.1.0
-mcpo>=0.0.20
-pydantic>=2.0.0
-# openai is no longer used by the server itself (the LLM segment fetcher was removed).
-# Still required by mcp/tests/test_e2e_llm_tool_loop.py, which drives Open WebUI's
-# OpenAI-compatible endpoint. Splitting test deps into requirements-dev.txt is tracked
-# in mcp/TECH_DEBT.md.
-openai>=1.0.0
-requests>=2.31.0
-pytest>=8.0.0
-pytest-asyncio>=0.23.0
-playwright>=1.40.0
+# Runtime dependencies for the MCP server image (mcp/setup/Dockerfile.mcp).
+# Test-only packages live in requirements-dev.txt so they don't ship to production.
+#
+# Pinned to the versions the suite was last verified green against. `mcp` and `fastmcp`
+# especially: server.py carries a sys.path shim to stop the local mcp/ directory
+# shadowing the mcp pip package, so an unexpected upgrade can break imports outright.
+# Bump deliberately and re-run ./mcp/tests/verify.sh.
+mcp==1.28.1
+fastmcp==3.4.4
+mcpo==0.0.20
+pydantic==2.13.4
+requests==2.34.2
