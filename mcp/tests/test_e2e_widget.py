@@ -189,3 +189,141 @@ def test_in_place_updating_e2e():
         
         browser.close()
 
+
+# ─── Segment Rendering Tests ──────────────────────────────────────────────────
+
+def _setup_playwright_page(p, ticker, selected_metrics, start_year=None, end_year=None):
+    """Helper: generate chart HTML, launch Playwright, set up routes, return (browser, page, errors).
+    Reads from existing SQLite cache — does NOT fetch new data (avoids needing API keys in tests).
+    """
+    from pathlib import Path
+
+    html_code = generate_visualization_html(
+        ticker, selected_metrics=selected_metrics,
+        start_year=start_year, end_year=end_year
+    )
+
+    # Skip if visualization returned an error div (no cached data)
+    if "Error" in html_code and "<div" in html_code and "color: #ef4444" in html_code:
+        pytest.skip(f"No cached data for {ticker} — run the MCP server first to populate cache")
+
+    html_code = html_code.replace("<head>", '<head><base href="http://localhost:3000">')
+
+    browser = p.chromium.launch(headless=True)
+    page = browser.new_page()
+
+    # Collect JS errors
+    errors = []
+    page.on("pageerror", lambda err: errors.append(str(err)))
+
+    # Route static assets from host filesystem
+    static_dir = Path(__file__).parent.parent.parent / "open_webui" / "static"
+    page.route("**/static/fink/chart.js", lambda route: route.fulfill(path=str(static_dir / "chart.js")))
+    page.route("**/static/fink/chartUtils.js", lambda route: route.fulfill(path=str(static_dir / "chartUtils.js")))
+    page.route("**/static/fink/dashboard.css", lambda route: route.fulfill(path=str(static_dir / "dashboard.css")))
+    page.route(f"**/static/fink/{ticker.lower()}-data.json",
+               lambda route: route.fulfill(path=str(static_dir / f"{ticker.lower()}-data.json")))
+
+    page.set_content(html_code, wait_until="load")
+    page.wait_for_timeout(1500)  # Allow Chart.js to initialize
+
+    return browser, page, errors
+
+
+def test_segment_chart_renders_without_errors():
+    """Load chart with revenue + product_segments for UNH — assert zero JS errors."""
+    with sync_playwright() as p:
+        browser, page, errors = _setup_playwright_page(
+            p, "UNH", ["revenue", "product_segments"]
+        )
+
+        assert page.locator("#financialChart").is_visible()
+        assert len(errors) == 0, f"JS errors during segment chart render: {errors}"
+
+        browser.close()
+
+
+def test_toggle_segments_on_off():
+    """Load chart with price only, toggle product_segments on then off — no crashes."""
+    with sync_playwright() as p:
+        browser, page, errors = _setup_playwright_page(
+            p, "UNH", ["price"]
+        )
+
+        # Toggle product_segments ON
+        page.locator("#metric-product_segments").check()
+        page.wait_for_timeout(800)
+
+        # Toggle product_segments OFF
+        page.locator("#metric-product_segments").uncheck()
+        page.wait_for_timeout(800)
+
+        assert len(errors) == 0, f"JS errors during segment toggle: {errors}"
+
+        browser.close()
+
+
+def test_mixed_chart_has_bar_and_line_datasets():
+    """With price + product_segments, Chart.js should have both line and bar datasets."""
+    with sync_playwright() as p:
+        browser, page, errors = _setup_playwright_page(
+            p, "UNH", ["price", "product_segments"]
+        )
+
+        chart_info = page.evaluate("""() => {
+            const chart = Chart.getChart("financialChart");
+            if (!chart) return null;
+            return {
+                datasets: chart.data.datasets.map(d => ({
+                    label: d.label,
+                    type: d.type || 'line',
+                    stack: d.stack || null,
+                    dataLength: d.data.length,
+                    nonNullCount: d.data.filter(v => v !== null && v !== undefined).length
+                }))
+            };
+        }""")
+
+        assert chart_info is not None, "Chart.js failed to initialize"
+        assert len(errors) == 0, f"JS errors: {errors}"
+
+        types = [d["type"] for d in chart_info["datasets"]]
+        assert "line" in types, f"Expected line datasets, got: {types}"
+        assert "bar" in types, f"Expected bar datasets, got: {types}"
+
+        # Bar datasets should have a stack property (for stacking)
+        bar_datasets = [d for d in chart_info["datasets"] if d["type"] == "bar"]
+        assert all(d["stack"] is not None for d in bar_datasets), \
+            f"Bar datasets missing stack property: {bar_datasets}"
+
+        browser.close()
+
+
+def test_segment_bars_have_data():
+    """Bar datasets for product_segments should contain non-null values."""
+    with sync_playwright() as p:
+        browser, page, errors = _setup_playwright_page(
+            p, "UNH", ["product_segments"]
+        )
+
+        chart_info = page.evaluate("""() => {
+            const chart = Chart.getChart("financialChart");
+            if (!chart) return null;
+            return {
+                datasets: chart.data.datasets.map(d => ({
+                    label: d.label,
+                    type: d.type || 'line',
+                    nonNullCount: d.data.filter(v => v !== null && v !== undefined).length
+                }))
+            };
+        }""")
+
+        assert chart_info is not None, "Chart.js failed to initialize"
+        assert len(chart_info["datasets"]) > 0, "Expected segment bar datasets"
+
+        # Each segment should have at least some non-null data points
+        for ds in chart_info["datasets"]:
+            assert ds["nonNullCount"] > 0, f"Segment '{ds['label']}' has no data"
+            assert ds["type"] == "bar", f"Segment '{ds['label']}' should be bar type, got {ds['type']}"
+
+        browser.close()

@@ -265,7 +265,6 @@ def smooth_series(data: list, window: int = 3) -> list:
             net_income=round(get_avg_val("net_income"), 2) if get_avg_val("net_income") is not None else None,
             free_cash_flow=round(get_avg_val("free_cash_flow"), 2) if get_avg_val("free_cash_flow") is not None else None,
             roic=round(get_avg_val("roic"), 4) if get_avg_val("roic") is not None else None,
-            eps=round(get_avg_val("eps"), 4) if get_avg_val("eps") is not None else None,
             capex=round(get_avg_val("capex"), 2) if get_avg_val("capex") is not None else None,
             operating_cash_flow=round(get_avg_val("operating_cash_flow"), 2) if get_avg_val("operating_cash_flow") is not None else None,
             pe_ratio=round(get_avg_val("pe_ratio"), 2) if get_avg_val("pe_ratio") is not None else None,
@@ -413,7 +412,6 @@ def get_aligned_historical_data(raw_cache: dict) -> list:
             net_income=net_inc,
             free_cash_flow=fcf,
             roic=roic,
-            eps=eps,
             capex=capex,
             operating_cash_flow=ocf,
             pe_ratio=pe,
@@ -508,3 +506,39 @@ def get_corporate_identity(raw_cache: dict) -> 'CorporateIdentity':
         country=country,
         last_refreshed=raw_cache.get("_meta_last_refreshed", "Unknown")
     )
+
+def merge_revenue_segment_data(aligned_points: list, segment_data: list) -> list:
+    """Merge revenue segment data into aligned ChartDataPoint list by fiscal year.
+    
+    Matches each segment entry's fiscal_year_end to the aligned point in the same year.
+    """
+    if not segment_data:
+        return aligned_points
+    
+    # Build a year -> segment entry lookup
+    segment_by_year = {}
+    for entry in segment_data:
+        try:
+            year = int(entry["fiscal_year_end"].split("-")[0])
+            segment_by_year[year] = entry
+        except (KeyError, ValueError, IndexError):
+            continue
+    
+    # Match to aligned points by year
+    for pt in aligned_points:
+        pt_dict = pt if isinstance(pt, dict) else (pt.model_dump() if hasattr(pt, 'model_dump') else pt.dict())
+        try:
+            pt_year = int(pt_dict["date"].split("-")[0])
+        except (KeyError, ValueError, IndexError):
+            continue
+        
+        if pt_year in segment_by_year:
+            seg = segment_by_year[pt_year]
+            if isinstance(pt, dict):
+                pt["product_segments"] = seg.get("product_segments", {})
+                pt["geographic_segments"] = seg.get("geographic_segments", {})
+            else:
+                pt.product_segments = seg.get("product_segments", {})
+                pt.geographic_segments = seg.get("geographic_segments", {})
+    
+    return aligned_points

@@ -17,47 +17,7 @@ from data.process_utils import get_aligned_historical_data
 from data.fetch_utils import FUNCTIONS, get_db_cache
 from data.models import VALID_METRIC_KEYS
 
-METRICS_CONFIG = [
-    { "id": "price", "label": "Stock Price", "category": "Aggregates", "defaultAxis": "y", "isAggregate": False, "color": "#3b82f6" },
-    { "id": "revenue", "label": "Revenue", "category": "Aggregates", "defaultAxis": "y", "isAggregate": True, "color": "#ec4899" },
-    { "id": "cost_of_goods_sold", "label": "COGS", "category": "Aggregates", "defaultAxis": "y", "isAggregate": True, "color": "#ef4444" },
-    { "id": "operating_income", "label": "Operating Income", "category": "Aggregates", "defaultAxis": "y", "isAggregate": True, "color": "#10b981" },
-    { "id": "net_income", "label": "Net Income", "category": "Aggregates", "defaultAxis": "y", "isAggregate": True, "color": "#6366f1" },
-    { "id": "operating_cash_flow", "label": "Operating Cash Flow", "category": "Aggregates", "defaultAxis": "y", "isAggregate": True, "color": "#06b6d4" },
-    { "id": "capex", "label": "CapEx", "category": "Aggregates", "defaultAxis": "y", "isAggregate": True, "color": "#f97316" },
-    { "id": "free_cash_flow", "label": "Free Cash Flow", "category": "Aggregates", "defaultAxis": "y", "isAggregate": True, "color": "#8b5cf6" },
-    { "id": "selling_general_admin", "label": "SG&A Expenses", "category": "Aggregates", "defaultAxis": "y", "isAggregate": True, "color": "#f43f5e" },
-    { "id": "research_development", "label": "R&D Expenses", "category": "Aggregates", "defaultAxis": "y", "isAggregate": True, "color": "#eab308" },
-    { "id": "stock_based_compensation", "label": "Stock-Based Comp", "category": "Aggregates", "defaultAxis": "y", "isAggregate": True, "color": "#a855f7" },
-    { "id": "share_repurchase", "label": "Share Repurchases", "category": "Aggregates", "defaultAxis": "y", "isAggregate": True, "color": "#d946ef" },
-    { "id": "cash_and_equivalents", "label": "Cash & Equivalents", "category": "Aggregates", "defaultAxis": "y", "isAggregate": True, "color": "#14b8a6" },
-    { "id": "total_debt", "label": "Total Debt", "category": "Aggregates", "defaultAxis": "y", "isAggregate": True, "color": "#64748b" },
-    { "id": "market_cap", "label": "Market Cap", "category": "Aggregates", "defaultAxis": "y", "isAggregate": True, "color": "#0284c7" },
-    { "id": "enterprise_value", "label": "Enterprise Value", "category": "Aggregates", "defaultAxis": "y", "isAggregate": True, "color": "#334155" },
-    { "id": "ebitda", "label": "EBITDA", "category": "Aggregates", "defaultAxis": "y", "isAggregate": True, "color": "#ec4899" },
-    
-    # Valuation Ratios
-    { "id": "pe_ratio", "label": "P/E (TTM)", "category": "Valuation Ratios", "defaultAxis": "y1", "isAggregate": False, "color": "#10b981" },
-    { "id": "ps_ratio", "label": "P/S (TTM)", "category": "Valuation Ratios", "defaultAxis": "y1", "isAggregate": False, "color": "#a78bfa" },
-    { "id": "pfcf_ratio", "label": "P/FCF (TTM)", "category": "Valuation Ratios", "defaultAxis": "y1", "isAggregate": False, "color": "#f97316" },
-    { "id": "pocf_ratio", "label": "P/OCF (TTM)", "category": "Valuation Ratios", "defaultAxis": "y1", "isAggregate": False, "color": "#06b6d4" },
-    { "id": "ev_ebitda", "label": "EV/EBITDA (TTM)", "category": "Valuation Ratios", "defaultAxis": "y1", "isAggregate": False, "color": "#f43f5e" },
-    
-    # Shareholder Return
-    { "id": "shares_outstanding", "label": "Shares Outstanding", "category": "Shareholder Return", "defaultAxis": "y1", "isAggregate": False, "color": "#6366f1" },
-    { "id": "dividends", "label": "Dividends", "category": "Shareholder Return", "defaultAxis": "y", "isAggregate": False, "color": "#ef4444" },
-    { "id": "dividend_yield", "label": "Dividend Yield (%) (TTM)", "category": "Shareholder Return", "defaultAxis": "y1", "isAggregate": False, "color": "#f43f5e" },
-    { "id": "payout_ratio_fcf", "label": "Payout Ratio (FCF %)", "category": "Shareholder Return", "defaultAxis": "y1", "isAggregate": False, "color": "#eab308" },
-    { "id": "payout_ratio_ocf", "label": "Payout Ratio (OCF %)", "category": "Shareholder Return", "defaultAxis": "y1", "isAggregate": False, "color": "#a855f7" },
-    
-    # Performance & Efficiency
-    { "id": "roic", "label": "ROIC (%)", "category": "Performance & Efficiency", "defaultAxis": "y1", "isAggregate": False, "color": "#14b8a6" },
-    { "id": "operating_margin", "label": "Operating Margin (%)", "category": "Performance & Efficiency", "defaultAxis": "y1", "isAggregate": False, "color": "#3b82f6" },
-    { "id": "profit_margin", "label": "Net Margin (%)", "category": "Performance & Efficiency", "defaultAxis": "y1", "isAggregate": False, "color": "#6366f1" },
-    { "id": "gross_margin", "label": "Gross Margin (%)", "category": "Performance & Efficiency", "defaultAxis": "y1", "isAggregate": False, "color": "#10b981" },
-    { "id": "roa", "label": "ROA (%)", "category": "Performance & Efficiency", "defaultAxis": "y1", "isAggregate": False, "color": "#ec4899" },
-    { "id": "roe", "label": "ROE (%)", "category": "Performance & Efficiency", "defaultAxis": "y1", "isAggregate": False, "color": "#0284c7" }
-]
+from metrics_registry import METRICS_REGISTRY as METRICS_CONFIG
 
 def generate_visualization_html(
     ticker: str,
@@ -68,7 +28,8 @@ def generate_visualization_html(
     per_share_metrics: list = None,
     left_axis_metrics: list = None,
     right_axis_metrics: list = None,
-    growth_rate_yoy: bool = False
+    growth_rate_yoy: bool = False,
+    revenue_segment_chart: str = None
 ) -> str:
     """
     Generates interactive HTML visualization markdown block for Chart.js from aligned financial history.
@@ -151,6 +112,24 @@ def generate_visualization_html(
                 
     # Keep all aligned metrics in the JSON dump
     processed_metrics = aligned_metrics
+
+    # Read segment data from cache (already populated by cache_ticker_data in server.py)
+    revenue_segment_metrics_requested = [m for m in selected_metrics if m in ('product_segments', 'geographic_segments')]
+    if revenue_segment_metrics_requested or revenue_segment_chart:
+        from data.fetch_utils import get_revenue_segment_cache
+        
+        revenue_segment_data = get_revenue_segment_cache(ticker)
+        if revenue_segment_data:
+            for revenue_seg_type in revenue_segment_metrics_requested or [revenue_segment_chart]:
+                if revenue_seg_type and revenue_seg_type in ('product_segments', 'geographic_segments'):
+                    # Build a date -> {segment_name: value} mapping
+                    revenue_seg_by_date = {}
+                    for entry in revenue_segment_data:
+                        fy_date = entry.get('fiscal_year_end', '')
+                        revenue_seg_values = entry.get(revenue_seg_type, {})
+                        if fy_date and revenue_seg_values:
+                            revenue_seg_by_date[fy_date] = revenue_seg_values
+                    processed_metrics[revenue_seg_type] = revenue_seg_by_date
                 
     # Write the data to a static JSON file to prevent code bloat and truncation
     static_dir = Path(__file__).parent.parent.parent / "open_webui" / "static"
@@ -164,7 +143,7 @@ def generate_visualization_html(
     end_date_str = f"{end_year}-12-31" if end_year else ""
     
     # Re-structure categories
-    categories = ["Aggregates", "Valuation Ratios", "Shareholder Return", "Performance & Efficiency"]
+    categories = ["Aggregates", "Valuation Ratios", "Shareholder Return", "Performance & Efficiency", "10-K Segments"]
     
     control_rows_html = ""
     for cat in categories:

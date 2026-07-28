@@ -27,6 +27,36 @@ services:
       - ../../open_webui/chartUtils.js:/app/backend/open_webui/static/chartUtils.js
       # Mount the host static folder containing chart.js and dynamic dashboards
       - ../../open_webui/static:/app/backend/open_webui/static/fink
+    depends_on:
+      fink-mcp-server:
+        condition: service_healthy
+    restart: always
+
+  fink-mcp-server:
+    build:
+      context: ../..
+      dockerfile: mcp/setup/Dockerfile.mcp
+    container_name: fink-mcp-server
+    ports:
+      - "8001:8001"
+    env_file:
+      - '../../.env'
+    environment:
+      # Container-specific path override (env_file handles API keys)
+      - ALPHAVANTAGE_CACHE_DB=/app/data/alphavantage_cache.db
+    volumes:
+      # Share the cache DB with Open WebUI
+      - open-webui-data:/app/data
+      # Mount MCP source for live development (optional, remove for prod)
+      - ../../mcp:/app/mcp
+      # Share static data dir with Open WebUI (data JSONs written here are served by Open WebUI)
+      - ../../open_webui/static:/app/open_webui/static
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8001/openapi.json"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     restart: always
 
 volumes:

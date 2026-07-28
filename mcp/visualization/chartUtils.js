@@ -1,6 +1,12 @@
 // chartUtils.js
 // Utilities for preparing chart data and configuration for Chart.js
 
+const SEGMENT_COLORS = [
+    '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
+    '#ec4899', '#06b6d4', '#f97316', '#14b8a6', '#6366f1',
+    '#d946ef', '#0ea5e9', '#eab308', '#a855f7', '#64748b'
+];
+
 /**
  * Prepares chart data for Chart.js from processed metrics.
  */
@@ -33,6 +39,46 @@ function prepareChartData(processedMetrics, selectedMetrics, metricsConfig, opti
         const data = processedMetrics[metricId];
         if (!metricConfig || !data) {
             continue;
+        }
+
+        // Check if this is a segment metric (dict of dicts)
+        const isSegmentMetric = metricConfig.chartType === 'stackedBar';
+        if (isSegmentMetric) {
+            // data is {date: {segmentName: value, ...}, ...}
+            // Collect all unique segment names across all dates
+            const segmentNames = new Set();
+            for (const dateKey of Object.keys(data)) {
+                if (typeof data[dateKey] === 'object' && data[dateKey] !== null) {
+                    Object.keys(data[dateKey]).forEach(name => segmentNames.add(name));
+                }
+            }
+            
+            // Create one bar dataset per segment
+            let colorIdx = 0;
+            for (const segName of segmentNames) {
+                const alignedData = commonLabels.map(label => {
+                    const dateData = data[label];
+                    if (dateData && typeof dateData === 'object') {
+                        return dateData[segName] ?? null;
+                    }
+                    return null;
+                });
+                
+                const color = SEGMENT_COLORS[colorIdx % SEGMENT_COLORS.length];
+                datasetsForChart.push({
+                    label: segName,
+                    data: alignedData,
+                    backgroundColor: color + 'CC',  // Slightly transparent
+                    borderColor: color,
+                    borderWidth: 1,
+                    yAxisID: 'y',
+                    type: 'bar',
+                    stack: metricId,  // Stack bars by segment type
+                    order: 2  // Bars render behind lines
+                });
+                colorIdx++;
+            }
+            continue;  // Skip the normal line dataset creation
         }
 
         let dataMap;
@@ -305,58 +351,60 @@ function initFinancialChart({
             };
         });
         
+        // Determine if we have bar datasets (segments) — affects stacking and chart lifecycle
+        const hasBarDatasets = filteredDatasets.some(ds => ds.type === 'bar');
+
+        // Always destroy existing chart before recreating.
+        // Mixed charts (line + bar) require full recreation when dataset types change;
+        // in-place update causes "Canvas already in use" and data parsing errors.
         if (chartInstance) {
-            chartInstance.data.labels = filteredLabels;
-            chartInstance.data.datasets = filteredDatasets;
-            // Update scales titles & configs based on normalization
-            if (normalize) {
-                chartInstance.options.scales.y.ticks.callback = v => v.toFixed(0) + "%";
-                chartInstance.options.scales.y1.display = false;
-            } else {
-                chartInstance.options.scales.y.ticks.callback = v => formatNumber(v);
-                // Hide right axis if no active datasets are mapped to it
-                const hasRightAxis = filteredDatasets.some(ds => ds.yAxisID === 'y1');
-                chartInstance.options.scales.y1.display = hasRightAxis;
-            }
-            chartInstance.update();
-        } else {
-            const ctx = document.getElementById("financialChart").getContext("2d");
-            const hasRightAxis = filteredDatasets.some(ds => ds.yAxisID === 'y1');
-            chartInstance = new Chart(ctx, {
-                type: "line",
-                data: {
-                    labels: filteredLabels,
-                    datasets: filteredDatasets
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    interaction: { mode: "index", intersect: false },
-                    scales: {
-                        y: { 
-                            type: "linear", position: "left",
-                            ticks: { color: "#334155", callback: v => formatNumber(v) },
-                            grid: { color: "rgba(0, 0, 0, 0.05)" }
-                        },
-                        y1: { 
-                            type: "linear", position: "right",
-                            ticks: { color: "#334155", callback: v => formatNumber(v) },
-                            grid: { drawOnChartArea: false },
-                            display: !normalize && hasRightAxis
-                        },
-                        x: { ticks: { color: "#334155" }, grid: { color: "rgba(0, 0, 0, 0.05)" } }
+            chartInstance.destroy();
+            chartInstance = null;
+        }
+
+        if (filteredDatasets.length === 0) return;
+
+        const ctx = document.getElementById("financialChart").getContext("2d");
+        const hasRightAxis = filteredDatasets.some(ds => ds.yAxisID === 'y1');
+        chartInstance = new Chart(ctx, {
+            type: "line",
+            data: {
+                labels: filteredLabels,
+                datasets: filteredDatasets
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: "index", intersect: false },
+                scales: {
+                    y: { 
+                        type: "linear", position: "left",
+                        ticks: { color: "#334155", callback: v => normalize ? v.toFixed(0) + "%" : formatNumber(v) },
+                        grid: { color: "rgba(0, 0, 0, 0.05)" },
+                        stacked: hasBarDatasets  // Enable stacking only when bar datasets (segments) exist
                     },
-                    plugins: {
-                        legend: { labels: { color: "#0f172a", font: { weight: '600', size: 11 } } },
-                        tooltip: {
-                            callbacks: {
-                                label: ctx => ctx.dataset.label + ': ' + formatTooltipVal(ctx.parsed.y, ctx.dataset.label, isNormalizeChecked())
-                            }
+                    y1: { 
+                        type: "linear", position: "right",
+                        ticks: { color: "#334155", callback: v => formatNumber(v) },
+                        grid: { drawOnChartArea: false },
+                        display: !normalize && hasRightAxis
+                    },
+                    x: { 
+                        ticks: { color: "#334155" }, 
+                        grid: { color: "rgba(0, 0, 0, 0.05)" },
+                        stacked: true
+                    }
+                },
+                plugins: {
+                    legend: { labels: { color: "#0f172a", font: { weight: '600', size: 11 } } },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => ctx.dataset.label + ': ' + formatTooltipVal(ctx.parsed.y, ctx.dataset.label, isNormalizeChecked())
                         }
                     }
                 }
-            });
-        }
+            }
+        });
     }
 
     // Set timeline bounds

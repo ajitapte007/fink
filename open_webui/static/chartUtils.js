@@ -1,6 +1,12 @@
 // chartUtils.js
 // Utilities for preparing chart data and configuration for Chart.js
 
+const SEGMENT_COLORS = [
+    '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
+    '#ec4899', '#06b6d4', '#f97316', '#14b8a6', '#6366f1',
+    '#d946ef', '#0ea5e9', '#eab308', '#a855f7', '#64748b'
+];
+
 /**
  * Prepares chart data for Chart.js from processed metrics.
  */
@@ -11,7 +17,6 @@ function prepareChartData(processedMetrics, selectedMetrics, metricsConfig, opti
     const perShareMetrics = options.perShareMetrics || [];
     const axisMappings = options.axisMappings || new Map();
     const normalize = !!options.normalize;
-    const yoy = !!options.yoy;
     const datasetsForChart = [];
     
     // Find the longest array/object of date keys across all metrics
@@ -34,6 +39,46 @@ function prepareChartData(processedMetrics, selectedMetrics, metricsConfig, opti
         const data = processedMetrics[metricId];
         if (!metricConfig || !data) {
             continue;
+        }
+
+        // Check if this is a segment metric (dict of dicts)
+        const isSegmentMetric = metricConfig.chartType === 'stackedBar';
+        if (isSegmentMetric) {
+            // data is {date: {segmentName: value, ...}, ...}
+            // Collect all unique segment names across all dates
+            const segmentNames = new Set();
+            for (const dateKey of Object.keys(data)) {
+                if (typeof data[dateKey] === 'object' && data[dateKey] !== null) {
+                    Object.keys(data[dateKey]).forEach(name => segmentNames.add(name));
+                }
+            }
+            
+            // Create one bar dataset per segment
+            let colorIdx = 0;
+            for (const segName of segmentNames) {
+                const alignedData = commonLabels.map(label => {
+                    const dateData = data[label];
+                    if (dateData && typeof dateData === 'object') {
+                        return dateData[segName] ?? null;
+                    }
+                    return null;
+                });
+                
+                const color = SEGMENT_COLORS[colorIdx % SEGMENT_COLORS.length];
+                datasetsForChart.push({
+                    label: segName,
+                    data: alignedData,
+                    backgroundColor: color + 'CC',  // Slightly transparent
+                    borderColor: color,
+                    borderWidth: 1,
+                    yAxisID: 'y',
+                    type: 'bar',
+                    stack: metricId,  // Stack bars by segment type
+                    order: 2  // Bars render behind lines
+                });
+                colorIdx++;
+            }
+            continue;  // Skip the normal line dataset creation
         }
 
         let dataMap;
@@ -62,9 +107,9 @@ function prepareChartData(processedMetrics, selectedMetrics, metricsConfig, opti
             yAxisID = axisMappings.get(metricId);
         }
 
-        // Suffix label with axis indicator only if not normalizing and not YoY (since both are single-axis)
+        // Suffix label with axis indicator only if not normalizing (since normalization is single-axis)
         let axisSuffix = "";
-        if (!normalize && !yoy) {
+        if (!normalize) {
             axisSuffix = yAxisID === 'y' ? " (L)" : " (R)";
         }
 
@@ -162,7 +207,7 @@ function initFinancialChart({
     initialMetrics, 
     initialStartDate, 
     initialEndDate,
-    initialTransform,
+    initialNormalize,
     initialPerShareMetrics,
     initialLeftAxisMetrics,
     initialRightAxisMetrics
@@ -171,11 +216,6 @@ function initFinancialChart({
     let commonLabelsGlobal = [];
     let processedMetrics = {};
     let sliderController = null;
-    
-    window.currentTransform = initialTransform || null;
-    if (window.updateTransformPills) {
-        window.updateTransformPills();
-    }
 
     function getSelectedMetrics() {
         const selected = [];
@@ -214,11 +254,8 @@ function initFinancialChart({
     }
 
     function isNormalizeChecked() {
-        return window.currentTransform === 'normalize';
-    }
-
-    function isYoyChecked() {
-        return window.currentTransform === 'yoy';
+        const el = document.getElementById('global-normalize');
+        return el ? el.checked : false;
     }
 
     function formatNumber(value) {
@@ -264,33 +301,16 @@ function initFinancialChart({
         return closestIdx;
     }
 
-    function getPriorYearIndex(commonLabels, targetIndex) {
-        const targetDate = new Date(commonLabels[targetIndex]);
-        let bestIndex = -1;
-        let minDiff = 45; // max 45 days difference allowed
-        for (let i = 0; i < targetIndex; i++) {
-            const priorDate = new Date(commonLabels[i]);
-            const diffDays = Math.abs((targetDate - priorDate) / (1000 * 60 * 60 * 24) - 365);
-            if (diffDays < minDiff) {
-                minDiff = diffDays;
-                bestIndex = i;
-            }
-        }
-        return bestIndex;
-    }
-
     function updateChart() {
         const selectedMetrics = getSelectedMetrics();
         const perShare = getPerShareMetrics();
         const axisMappings = getAxisMappings();
         const normalize = isNormalizeChecked();
-        const yoy = isYoyChecked();
 
         const { datasets, commonLabels } = prepareChartData(processedMetrics, selectedMetrics, metricsConfig, {
             perShareMetrics: perShare,
             axisMappings: axisMappings,
-            normalize: normalize,
-            yoy: yoy
+            normalize: normalize
         });
         
         if (!commonLabelsGlobal.length || commonLabelsGlobal.length !== commonLabels.length) {
@@ -322,77 +342,69 @@ function initFinancialChart({
                 } else {
                     slicedData = slicedData.map(() => null);
                 }
-            } else if (yoy) {
-                slicedData = slicedData.map((v, k) => {
-                    const currentIndex = startIdx + k;
-                    const priorIdx = getPriorYearIndex(commonLabels, currentIndex);
-                    if (priorIdx === -1) return null;
-                    const currentVal = ds.data[currentIndex];
-                    const priorVal = ds.data[priorIdx];
-                    if (currentVal === null || priorVal === null || priorVal === 0) return null;
-                    return ((currentVal - priorVal) / Math.abs(priorVal)) * 100;
-                });
             }
 
             return { 
                 ...ds, 
                 data: slicedData,
-                yAxisID: (normalize || yoy) ? 'y' : ds.yAxisID // Standardize to left axis if normalized or YoY
+                yAxisID: normalize ? 'y' : ds.yAxisID // Standardize to left axis if normalized
             };
         });
         
+        // Determine if we have bar datasets (segments) — affects stacking and chart lifecycle
+        const hasBarDatasets = filteredDatasets.some(ds => ds.type === 'bar');
+
+        // Always destroy existing chart before recreating.
+        // Mixed charts (line + bar) require full recreation when dataset types change;
+        // in-place update causes "Canvas already in use" and data parsing errors.
         if (chartInstance) {
-            chartInstance.data.labels = filteredLabels;
-            chartInstance.data.datasets = filteredDatasets;
-            // Update scales titles & configs based on normalization or YoY
-            if (normalize || yoy) {
-                chartInstance.options.scales.y.ticks.callback = v => v.toFixed(0) + "%";
-                chartInstance.options.scales.y1.display = false;
-            } else {
-                chartInstance.options.scales.y.ticks.callback = v => formatNumber(v);
-                // Hide right axis if no active datasets are mapped to it
-                const hasRightAxis = filteredDatasets.some(ds => ds.yAxisID === 'y1');
-                chartInstance.options.scales.y1.display = hasRightAxis;
-            }
-            chartInstance.update();
-        } else {
-            const ctx = document.getElementById("financialChart").getContext("2d");
-            const hasRightAxis = filteredDatasets.some(ds => ds.yAxisID === 'y1');
-            chartInstance = new Chart(ctx, {
-                type: "line",
-                data: {
-                    labels: filteredLabels,
-                    datasets: filteredDatasets
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    interaction: { mode: "index", intersect: false },
-                    scales: {
-                        y: { 
-                            type: "linear", position: "left",
-                            ticks: { color: "#334155", callback: v => formatNumber(v) },
-                            grid: { color: "rgba(0, 0, 0, 0.05)" }
-                        },
-                        y1: { 
-                            type: "linear", position: "right",
-                            ticks: { color: "#334155", callback: v => formatNumber(v) },
-                            grid: { drawOnChartArea: false },
-                            display: !isNormalizeChecked() && !isYoyChecked() && hasRightAxis
-                        },
-                        x: { ticks: { color: "#334155" }, grid: { color: "rgba(0, 0, 0, 0.05)" } }
+            chartInstance.destroy();
+            chartInstance = null;
+        }
+
+        if (filteredDatasets.length === 0) return;
+
+        const ctx = document.getElementById("financialChart").getContext("2d");
+        const hasRightAxis = filteredDatasets.some(ds => ds.yAxisID === 'y1');
+        chartInstance = new Chart(ctx, {
+            type: "line",
+            data: {
+                labels: filteredLabels,
+                datasets: filteredDatasets
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: "index", intersect: false },
+                scales: {
+                    y: { 
+                        type: "linear", position: "left",
+                        ticks: { color: "#334155", callback: v => normalize ? v.toFixed(0) + "%" : formatNumber(v) },
+                        grid: { color: "rgba(0, 0, 0, 0.05)" },
+                        stacked: hasBarDatasets  // Enable stacking only when bar datasets (segments) exist
                     },
-                    plugins: {
-                        legend: { labels: { color: "#0f172a", font: { weight: '600', size: 11 } } },
-                        tooltip: {
-                            callbacks: {
-                                label: ctx => ctx.dataset.label + ': ' + formatTooltipVal(ctx.parsed.y, ctx.dataset.label, isNormalizeChecked() || isYoyChecked())
-                            }
+                    y1: { 
+                        type: "linear", position: "right",
+                        ticks: { color: "#334155", callback: v => formatNumber(v) },
+                        grid: { drawOnChartArea: false },
+                        display: !normalize && hasRightAxis
+                    },
+                    x: { 
+                        ticks: { color: "#334155" }, 
+                        grid: { color: "rgba(0, 0, 0, 0.05)" },
+                        stacked: true
+                    }
+                },
+                plugins: {
+                    legend: { labels: { color: "#0f172a", font: { weight: '600', size: 11 } } },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => ctx.dataset.label + ': ' + formatTooltipVal(ctx.parsed.y, ctx.dataset.label, isNormalizeChecked())
                         }
                     }
                 }
-            });
-        }
+            }
+        });
     }
 
     // Set timeline bounds
@@ -445,10 +457,6 @@ function initFinancialChart({
     };
     
     window.onNormalizeChanged = function() {
-        updateChart();
-    };
-
-    window.updateChart = function() {
         updateChart();
     };
 

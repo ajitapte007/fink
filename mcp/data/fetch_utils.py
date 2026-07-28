@@ -429,3 +429,18 @@ def get_all_data_for_ticker(ticker: str, force_refresh: bool = False, ttl_hours:
     ticker_data["_meta_source"] = source
     ticker_data["_meta_corrupt_functions"] = corrupt_functions
     return ticker_data
+
+def get_revenue_segment_cache(symbol: str) -> dict | None:
+    """Read cached REVENUE_SEGMENTS data for a ticker."""
+    entry = get_db_cache(symbol, "REVENUE_SEGMENTS")
+    if entry is None:
+        return None
+    data, timestamp, expires_at, source, is_corrupt = entry
+    if expires_at and time.time() > expires_at:
+        return None  # expired
+    return data
+
+def set_revenue_segment_cache(symbol: str, data: list, ttl_seconds: int = 365 * 24 * 3600):
+    """Write REVENUE_SEGMENTS data to cache with 1-year TTL."""
+    now = time.time()
+    set_db_cache(symbol, "REVENUE_SEGMENTS", data, now, now + ttl_seconds, "llm_search")
