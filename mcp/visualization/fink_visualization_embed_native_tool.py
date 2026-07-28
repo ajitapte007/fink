@@ -2,7 +2,7 @@
 title: Fink Financial Chart Tool (Native)
 author: Antigravity Pair Programmer
 author_url: https://github.com/google/antigravity
-version: 1.0
+version: 2.0
 """
 
 import httpx
@@ -13,7 +13,7 @@ class Tools:
     def __init__(self):
         pass
 
-    async def visualization_embed_native(
+    async def visualize_native(
         self,
         ticker: str,
         selected_metrics: Optional[List[str]] = None,
@@ -25,24 +25,33 @@ class Tools:
     ) -> str:
         """
         Generates and mounts an interactive Chart.js financial analytics chart for a given stock ticker.
+        Auto-fetches data on first use — no need to prime the cache.
         
         :param ticker: Stock ticker symbol (e.g. 'UNH').
-        :param selected_metrics: List of metrics (e.g. ['price', 'pe_ratio']).
+        :param selected_metrics: List of metrics to plot. Valid metrics: {{VALID_METRIC_NAMES}}
         :param start_year: Start year bound for the timeline (e.g. 2018).
         :param end_year: End year bound for the timeline (e.g. 2026).
         :param normalize: Set to True to normalize chart data to show percentage growth from starting baseline. Set to False for absolute values. Default is False. At most one of 'normalize' or 'growth_rate_yoy' should be True.
         :param growth_rate_yoy: Set to True to calculate and display the Year-over-Year (YoY) percentage rate of growth change for all metrics. Set to False for absolute values. Default is False. At most one of 'normalize' or 'growth_rate_yoy' should be True.
         """
-        url = "http://host.docker.internal:8001/visualization_internal"
-        try:
-            import socket
-            socket.gethostbyname("host.docker.internal")
-        except socket.gaierror:
-            url = "http://localhost:8001/visualization_internal"
+        # Try Docker compose service name first, then host.docker.internal, then localhost
+        url = None
+        import socket
+        for host in ["fink-mcp-server", "host.docker.internal", "localhost"]:
+            try:
+                socket.gethostbyname(host)
+                url = f"http://{host}:8001/visualize_html"
+                break
+            except socket.gaierror:
+                continue
+        if url is None:
+            url = "http://localhost:8001/visualize_html"
             
         payload = {
             "ticker": ticker,
-            "selected_metrics": selected_metrics or ["price"],
+            # Omit when unset so the server applies DEFAULT_CHART_METRICS from the registry,
+            # rather than duplicating a default here that can drift out of sync.
+            "selected_metrics": selected_metrics,
             "start_year": start_year,
             "end_year": end_year,
             "normalize": normalize,
@@ -51,7 +60,7 @@ class Tools:
         
         try:
             async with httpx.AsyncClient() as client:
-                response = await client.post(url, json=payload, timeout=20.0)
+                response = await client.post(url, json=payload, timeout=120.0)
                 if response.status_code != 200:
                     return f"Error calling visualization server: {response.text}"
                 

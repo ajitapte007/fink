@@ -28,7 +28,8 @@ def test_open_webui_e2e_tool_call():
         
     # 2. Extract and format schemas for OpenAI payload
     formatted_tools = []
-    target_tool_ids = ["visualization_embed_native", "fink_openapi_mcp_tool_alphavantage_post", "fink_openapi_mcp_tool_visualization_internal_post"]
+    # Must match --viz-id / --metrics-id in mcp/setup/setup_open_webui_container.sh
+    target_tool_ids = ["visualize_native", "compute_metrics_native"]
     for t in tools_list:
         if t["id"] in target_tool_ids:
             for spec in t.get("specs", []):
@@ -105,7 +106,10 @@ def test_open_webui_e2e_tool_call():
     assert len(tool_calls) > 0, "Expected LLM to request a tool call."
     
     requested_tool = tool_calls[0]["function"]["name"]
-    assert requested_tool in ["fink_openapi_mcp_tool_alphavantage_post", "visualization_embed_native"], \
+    # Either primary tool is a valid response to "show me financials" — the model may
+    # reach for the chart or the raw numbers. Names must match the --viz-id/--metrics-id
+    # registered by mcp/setup/setup_open_webui_container.sh.
+    assert requested_tool in ["visualize_native", "compute_metrics_native"], \
         f"Expected LLM to call one of the primary tools, but it called '{requested_tool}'."
         
     # Verify that the LLM successfully resolved the user query context and passed 'UNH' as the ticker
@@ -142,8 +146,8 @@ def test_native_tool_execution():
         
     import asyncio
     
-    # Run the native tool's visualization_embed_native asynchronously
-    result = asyncio.run(tool.visualization_embed_native(
+    # Run the native tool's visualize_native method asynchronously
+    result = asyncio.run(tool.visualize_native(
         ticker="UNH",
         selected_metrics=["price", "pe_ratio"],
         start_year=2020,

@@ -1,0 +1,17 @@
+FROM python:3.11-slim
+
+# Install curl for healthcheck
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app/mcp
+
+# Copy requirements and install dependencies
+COPY mcp/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy MCP server source code
+COPY mcp/ .
+
+# MCPO wraps the FastMCP server as an OpenAPI endpoint
+EXPOSE 8001
+CMD ["mcpo", "--host", "0.0.0.0", "--port", "8001", "--", "python", "server.py"]

@@ -1,59 +1,136 @@
-# MCP Financial Analytics API & Tool Reference
+# MCP Financial Analytics — API & Tool Reference
 
-This document describes the API schemas, tool schemas, and supported workflows for the MCP server.
+Schemas and workflows for the two tools the Fink MCP server exposes.
+
+Both tools **auto-fetch on cache miss** — there is no separate "fetch first" step. Data
+resolution is handled by `cache_ticker_data()` (see [data/README.md](./data/README.md)).
 
 ---
 
-## Tool API Reference
+## Tool Reference
 
-### 1. `alphavantage` Tool
-Exposes cleaned financial history data for US-listed tickers.
+### 1. `visualize_html`
 
-- **Parameters:**
-  - `ticker` (string, required): US ticker symbol (e.g. `"AAPL"`).
+Renders an interactive Chart.js dashboard and returns it as an embeddable iframe.
 
-- **Returns:** JSON object containing:
-  - `ticker` (string): The ticker symbol.
-  - `source` (string): Origin of the data (`"mock"`, `"cache"`, or `"alphavantage"`).
-  - `metrics`: Dictionary of statement lists (earnings, cashflow, balance sheets).
-  - `error` (object, optional): If the fetch fails, contains detailed error logs.
+```python
+visualize_html(
+    ticker: str,
+    selected_metrics: Optional[List[str]] = None,
+    start_year: Optional[int] = None,
+    end_year: Optional[int] = None,
+    normalize: Optional[bool] = False,
+    per_share_metrics: Optional[List[str]] = None,
+    left_axis_metrics: Optional[List[str]] = None,
+    right_axis_metrics: Optional[List[str]] = None,
+    growth_rate_yoy: Optional[bool] = False,
+) -> str
+```
 
-- **Data Fetch Precedence:**
-  1. Check mock datasets (if ticker matches mock assets or API limits reached).
-  2. Local SQLite DB cache (TTL checking).
-  3. Live Alpha Vantage API.
+| Parameter | Notes |
+|---|---|
+| `ticker` | US ticker, case-insensitive. Required. |
+| `selected_metrics` | Any of `VALID_METRIC_KEYS`. **Omit** to get `DEFAULT_CHART_METRICS` — `price`, `revenue`, `net_income`, `operating_margin`. Do not pass a single guess. |
+| `start_year` / `end_year` | Inclusive bounds. An omitted `end_year` resolves to the current year server-side. |
+| `normalize` | Rebase every series to 100% of its first visible value. |
+| `growth_rate_yoy` | Year-over-year % change, each point against 12 months prior. |
+| `per_share_metrics` | Aggregate metrics to divide by shares outstanding. |
+| `left_axis_metrics` / `right_axis_metrics` | Force specific metrics onto an axis, overriding `defaultAxis`. |
 
-### 2. `visualization` Tool
-Generates an interactive HTML-based time series widget leveraging Chart.js.
+`normalize` and `growth_rate_yoy` are mutually exclusive — set at most one. Both
+collapse all series onto the left axis, since both produce percentages.
 
-- **Parameters:**
-  - `ticker` (string, required): Ticker symbol.
-  - `data` (object, required): JSON object returned by the `alphavantage` tool.
-  - `selected_metrics` (array of strings, optional): Metrics to check by default. Defaults to `["price", "ps_ratio"]`.
-  - `start_year` (integer, optional): Initial start year bound.
-  - `end_year` (integer, optional): Initial end year bound.
+**Returns** an `<iframe srcdoc="...">` string. The chart HTML loads
+`/static/fink/chartUtils.js` and a per-ticker `{ticker}-data.json` written at render
+time, which keeps multi-year series out of the model's token budget.
 
-- **Returns:** Markdown block wrapped with `html` rendering script:
-  - Renders a multi-graph line chart.
-  - X-axis: Time (years).
-  - Dual Y-axes (left: Stock Price; right: selected financial ratios/metrics).
-  - Interactive widgets: checkboxes for choosing metrics (Price, P/S Ratio, Revenue, EBITDA, Cash Flow, etc.), and a double-thumb slider to control start/end date range.
+---
+
+### 2. `compute_metrics`
+
+Returns aligned historical values as JSON, for reasoning rather than display.
+
+```python
+compute_metrics(
+    ticker: str,
+    metrics: Optional[List[str]] = None,
+    per_share_metrics: Optional[List[str]] = None,
+    start_year: Optional[int] = None,
+    end_year: Optional[int] = None,
+) -> str
+```
+
+| Parameter | Notes |
+|---|---|
+| `metrics` | Omit to return **all** metrics. Unknown keys produce a structured error listing the valid ones. |
+| `per_share_metrics` | Scaled by shares outstanding on the fly; `None` where shares are missing or zero. |
+| `start_year` / `end_year` | Inclusive. An omitted `end_year` resolves to the current year. |
+
+**Returns** a JSON string:
+
+```json
+{
+  "ticker": "AMZN",
+  "timeframe": { "start_year": 2018, "end_year": 2026 },
+  "data": [ { "date": "2018-01-31", "revenue": 193194000000.0 } ]
+}
+```
+
+Metrics with no value at a given date are omitted from that point rather than emitted
+as `null`, so sparse series stay compact.
+
+---
+
+## Metrics
+
+Every metric is defined once in [`metrics_registry.py`](./metrics_registry.py) — id,
+label, description, unit, category, default axis, colour, and whether it is an
+aggregate. Adding a metric there propagates to validation, the chart's checkbox list,
+and the native tool docstrings (via a `{{VALID_METRIC_NAMES}}` placeholder substituted
+at registration).
+
+Categories: **Aggregates**, **Valuation Ratios**, **Shareholder Return**,
+**Performance & Efficiency**. 33 metrics as of this writing.
+
+> 10-K revenue segment metrics were removed on 2026-07-28 — see
+> [docs/REVENUE_SEGMENTS_RESTORATION.md](./docs/REVENUE_SEGMENTS_RESTORATION.md).
+
+---
+
+## Timeframe resolution
+
+Relative ranges ("the last 10 years") are resolved in two layers:
+
+1. **System prompt** — a shared `## Timeframes` section instructs the model to compute
+   ranges from today's date, which Open WebUI injects per request via `{{CURRENT_DATE}}`.
+   It applies to both tools.
+2. **Server-side** — `_resolve_end_year()` defaults an omitted `end_year` to the current
+   year, so the upper bound does not depend on the model getting the arithmetic right.
+
+An explicitly supplied `end_year` is always respected; a user may legitimately want a
+window that ends in the past.
 
 ---
 
 ## Workflows
 
-### 1. Direct UI Interaction Workflow
-1. User prompts: *"Compare AAPL stock price with its PS ratio."*
-2. LLM calls `alphavantage(ticker="AAPL")` and receives JSON data.
-3. LLM calls `visualization(ticker="AAPL", data={...})` and receives the HTML string.
-4. The client renders the widget inside a sandboxed `<iframe>`.
-5. The user directly toggles checkbox metrics on the screen or slides the range slider.
-6. The HTML script dynamically recalculates scale bounds and updates the Chart.js canvas immediately in-browser.
+### Chart request
 
-### 2. Chat-Driven Modification Workflow
-1. User sees the initial chart and types in chat: *"Now filter it from 2018 to 2022 and show Revenue instead of PS ratio."*
-2. LLM parses the request and invokes:
-   `visualization(ticker="AAPL", data=..., selected_metrics=["price", "revenue"], start_year=2018, end_year=2022)`
-3. The server generates a new HTML block with initial parameter states preset.
-4. The client swaps/renders the new widget block.
+1. *"Show me UNH financials for the last 5 years."*
+2. The model calls `visualize_native` (the Open WebUI wrapper), which POSTs to
+   `visualize_html` on the MCP server.
+3. Data is fetched if absent, the widget HTML and its JSON payload are written, and an
+   iframe is emitted into the chat.
+4. The user adjusts metrics, axes, per-share scaling, the year slider, or the
+   Normalize / Growth Rate buttons directly in the widget — all client-side, no round trip.
+
+### Conversational refinement
+
+1. *"Plot revenue instead, from 2018."*
+2. The model re-invokes the tool with the new parameters; a fresh widget is rendered.
+
+### Analysis request
+
+1. *"Why did AMZN's margins move in 2022?"*
+2. The model calls `compute_metrics` for the relevant metrics and reasons over the JSON,
+   typically also rendering a supporting chart (Intent B in the system prompt).

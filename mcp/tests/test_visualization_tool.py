@@ -1,6 +1,7 @@
 # mcp/tests/test_visualization_tool.py
 import pytest
 from data.alphavantage_tool import fetch_alphavantage_data
+from metrics_registry import DEFAULT_CHART_METRICS
 from visualization.visualization_tool import generate_visualization_html
 
 def test_generate_visualization_html():
@@ -49,8 +50,31 @@ def test_generate_visualization_html():
 def test_generate_visualization_html_normalize():
     html = generate_visualization_html("AMZN", selected_metrics=["price"], normalize=True)
     assert 'window.initialTransform = "normalize"' in html
+    # The flag must reach initFinancialChart under the name it destructures. A previous
+    # mismatch (passed as initialTransform, destructured as initialNormalize) meant
+    # server-side normalize was silently discarded, and a substring check missed it.
+    assert 'initialTransform: window.initialTransform' in html
+
 
 def test_generate_visualization_html_growth_rate_yoy():
     html = generate_visualization_html("AMZN", selected_metrics=["price"], growth_rate_yoy=True)
     assert 'window.initialTransform = "yoy"' in html
+    assert 'initialTransform: window.initialTransform' in html
+
+
+def test_default_chart_metrics_applied_when_unspecified():
+    """A bare chart request should plot the registry default set, not a single metric."""
+    html = generate_visualization_html("AMZN")
+    for metric in DEFAULT_CHART_METRICS:
+        assert f'initialMetrics' in html
+        assert f'"{metric}"' in html.split('initialMetrics:')[1].split(']')[0], \
+            f"{metric} missing from initialMetrics"
+
+
+def test_explicit_metrics_override_defaults():
+    """An explicit selection must not be merged with the defaults."""
+    html = generate_visualization_html("AMZN", selected_metrics=["ebitda"])
+    initial = html.split('initialMetrics:')[1].split(']')[0]
+    assert '"ebitda"' in initial
+    assert '"revenue"' not in initial
 

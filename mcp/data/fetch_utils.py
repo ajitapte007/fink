@@ -14,6 +14,36 @@ FUNCTIONS = ["OVERVIEW", "TIME_SERIES_MONTHLY_ADJUSTED", "INCOME_STATEMENT", "BA
 DB_PATH_DEFAULT = "/app/backend/data/alphavantage_cache.db"
 DB_PATH_ENV = os.getenv("ALPHAVANTAGE_CACHE_DB")
 
+class OfflineDataUnavailable(RuntimeError):
+    """Raised when seed mode is active and the requested data isn't available locally."""
+
+
+def get_data_mode() -> str:
+    """Where financial data may come from. Set via the FINK_DATA_MODE env var.
+
+    "live" (default) — SQLite cache → seed JSON → AlphaVantage network.
+    "seed"           — SQLite cache → seed JSON → raise. Never touches the network.
+
+    Seed mode exists because `mock_data=True` was never sufficient to keep tests
+    offline: it only *prefers* the seed corpus, and falls through to the live API for
+    any ticker not in `data/local_av_cache/`. That made the suite hit AlphaVantage for
+    cases like INVALIDTICKER12345 — burning daily quota, writing junk rows into the
+    shared cache, and making runtime depend on rate limiting (one run took 4m10s vs 42s).
+
+    `mcp/tests/conftest.py` forces "seed", so tests are offline however they're invoked.
+    Production sets FINK_DATA_MODE=live in docker-compose.yml.
+    """
+    return os.getenv("FINK_DATA_MODE", "live").strip().lower()
+
+
+def available_seed_tickers() -> set:
+    """Tickers present in the local seed corpus."""
+    seed_dir = Path(__file__).parent / "local_av_cache"
+    if not seed_dir.is_dir():
+        return set()
+    return {p.stem.upper() for p in seed_dir.glob("*.json")}
+
+
 def get_db_path() -> Path:
     if DB_PATH_ENV:
         return Path(DB_PATH_ENV)
@@ -253,7 +283,14 @@ def get_av_data(symbol: str, function: str, force_refresh: bool = False, ttl_sec
                 "is_corrupt": bool(is_corrupt)
             }
             
-    # 3. Cache miss/expired/corrupt -> Fetch from network
+    # 3. Cache miss/expired/corrupt -> Fetch from network, unless we're in seed mode.
+    if get_data_mode() == "seed":
+        raise OfflineDataUnavailable(
+            f"{symbol} - {function} is not in the SQLite cache or the seed corpus, and "
+            f"FINK_DATA_MODE=seed forbids network access. Seeded tickers: "
+            f"{', '.join(sorted(available_seed_tickers()))}."
+        )
+
     log_info(f"Cache miss/refresh for {symbol} - {function}. Fetching from network...")
     try:
         data = fetch_data(function, symbol)

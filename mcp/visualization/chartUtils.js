@@ -159,9 +159,9 @@ function initFinancialChart({
     dataUrl, 
     metricsConfig, 
     initialMetrics, 
-    initialStartDate, 
+    initialStartDate,
     initialEndDate,
-    initialNormalize,
+    initialTransform,
     initialPerShareMetrics,
     initialLeftAxisMetrics,
     initialRightAxisMetrics
@@ -207,9 +207,13 @@ function initFinancialChart({
         return mappings;
     }
 
-    function isNormalizeChecked() {
-        const el = document.getElementById('global-normalize');
-        return el ? el.checked : false;
+    // Number of monthly periods in a year — YoY compares each point to 12 months prior.
+    const YOY_PERIOD = 12;
+
+    // Single source of truth for the active transform: 'normalize' | 'yoy' | null.
+    // Set by toggleTransform() in the generated page and seeded from initialTransform.
+    function getTransform() {
+        return window.currentTransform || null;
     }
 
     function formatNumber(value) {
@@ -221,9 +225,10 @@ function initFinancialChart({
         return value.toFixed(1);
     }
 
-    function formatTooltipVal(val, label, normalize) {
+    function formatTooltipVal(val, label, isTransformed) {
         if (val === null || val === undefined) return '';
-        if (normalize) {
+        // Both normalize and YoY yield percentages, so units/currency don't apply.
+        if (isTransformed) {
             return val.toFixed(2) + "%";
         }
         const labelLower = label.toLowerCase();
@@ -259,7 +264,9 @@ function initFinancialChart({
         const selectedMetrics = getSelectedMetrics();
         const perShare = getPerShareMetrics();
         const axisMappings = getAxisMappings();
-        const normalize = isNormalizeChecked();
+        const transform = getTransform();
+        const normalize = transform === 'normalize';
+        const yoy = transform === 'yoy';
 
         const { datasets, commonLabels } = prepareChartData(processedMetrics, selectedMetrics, metricsConfig, {
             perShareMetrics: perShare,
@@ -278,8 +285,23 @@ function initFinancialChart({
         
         let filteredLabels = commonLabels.slice(startIdx, endIdx + 1);
         let filteredDatasets = datasets.map(ds => {
-            let slicedData = ds.data.slice(startIdx, endIdx + 1);
-            
+            let series = ds.data;
+
+            // Year-over-year growth. Computed on the FULL series before slicing, so the
+            // visible window keeps values as long as 12 months of history precede it.
+            // Divides by |prev| so a negative base doesn't invert the sign of the growth.
+            if (yoy) {
+                series = series.map((v, i) => {
+                    if (i < YOY_PERIOD) return null;
+                    const prev = series[i - YOY_PERIOD];
+                    if (v === null || v === undefined) return null;
+                    if (prev === null || prev === undefined || prev === 0) return null;
+                    return ((v - prev) / Math.abs(prev)) * 100;
+                });
+            }
+
+            let slicedData = series.slice(startIdx, endIdx + 1);
+
             // Apply Normalization over the visible range if active
             if (normalize) {
                 // Find first non-null, non-zero baseline value in this sliced window
@@ -298,65 +320,63 @@ function initFinancialChart({
                 }
             }
 
-            return { 
-                ...ds, 
+            return {
+                ...ds,
                 data: slicedData,
-                yAxisID: normalize ? 'y' : ds.yAxisID // Standardize to left axis if normalized
+                // Both transforms produce percentages, so collapse onto the left axis
+                yAxisID: (normalize || yoy) ? 'y' : ds.yAxisID
             };
         });
         
+        // Always destroy existing chart before recreating. A single construction
+        // path is simpler than branching on update-vs-create, and avoids the
+        // "Canvas already in use" class of bug when chart config changes.
         if (chartInstance) {
-            chartInstance.data.labels = filteredLabels;
-            chartInstance.data.datasets = filteredDatasets;
-            // Update scales titles & configs based on normalization
-            if (normalize) {
-                chartInstance.options.scales.y.ticks.callback = v => v.toFixed(0) + "%";
-                chartInstance.options.scales.y1.display = false;
-            } else {
-                chartInstance.options.scales.y.ticks.callback = v => formatNumber(v);
-                // Hide right axis if no active datasets are mapped to it
-                const hasRightAxis = filteredDatasets.some(ds => ds.yAxisID === 'y1');
-                chartInstance.options.scales.y1.display = hasRightAxis;
-            }
-            chartInstance.update();
-        } else {
-            const ctx = document.getElementById("financialChart").getContext("2d");
-            const hasRightAxis = filteredDatasets.some(ds => ds.yAxisID === 'y1');
-            chartInstance = new Chart(ctx, {
-                type: "line",
-                data: {
-                    labels: filteredLabels,
-                    datasets: filteredDatasets
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    interaction: { mode: "index", intersect: false },
-                    scales: {
-                        y: { 
-                            type: "linear", position: "left",
-                            ticks: { color: "#334155", callback: v => formatNumber(v) },
-                            grid: { color: "rgba(0, 0, 0, 0.05)" }
-                        },
-                        y1: { 
-                            type: "linear", position: "right",
-                            ticks: { color: "#334155", callback: v => formatNumber(v) },
-                            grid: { drawOnChartArea: false },
-                            display: !normalize && hasRightAxis
-                        },
-                        x: { ticks: { color: "#334155" }, grid: { color: "rgba(0, 0, 0, 0.05)" } }
+            chartInstance.destroy();
+            chartInstance = null;
+        }
+
+        if (filteredDatasets.length === 0) return;
+
+        const ctx = document.getElementById("financialChart").getContext("2d");
+        const hasRightAxis = filteredDatasets.some(ds => ds.yAxisID === 'y1');
+        chartInstance = new Chart(ctx, {
+            type: "line",
+            data: {
+                labels: filteredLabels,
+                datasets: filteredDatasets
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: "index", intersect: false },
+                scales: {
+                    y: { 
+                        type: "linear", position: "left",
+                        ticks: { color: "#334155", callback: v => (normalize || yoy) ? v.toFixed(0) + "%" : formatNumber(v) },
+                        grid: { color: "rgba(0, 0, 0, 0.05)" }
                     },
-                    plugins: {
-                        legend: { labels: { color: "#0f172a", font: { weight: '600', size: 11 } } },
-                        tooltip: {
-                            callbacks: {
-                                label: ctx => ctx.dataset.label + ': ' + formatTooltipVal(ctx.parsed.y, ctx.dataset.label, isNormalizeChecked())
-                            }
+                    y1: { 
+                        type: "linear", position: "right",
+                        ticks: { color: "#334155", callback: v => formatNumber(v) },
+                        grid: { drawOnChartArea: false },
+                        display: !(normalize || yoy) && hasRightAxis
+                    },
+                    x: {
+                        ticks: { color: "#334155" },
+                        grid: { color: "rgba(0, 0, 0, 0.05)" }
+                    }
+                },
+                plugins: {
+                    legend: { labels: { color: "#0f172a", font: { weight: '600', size: 11 } } },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => ctx.dataset.label + ': ' + formatTooltipVal(ctx.parsed.y, ctx.dataset.label, normalize || yoy)
                         }
                     }
                 }
-            });
-        }
+            }
+        });
     }
 
     // Set timeline bounds
@@ -412,7 +432,7 @@ function initFinancialChart({
         updateChart();
     };
 
-    window.updateChartParameters = function({ metrics, startDate, endDate, normalize, perShareMetrics, leftAxisMetrics, rightAxisMetrics }) {
+    window.updateChartParameters = function({ metrics, startDate, endDate, transform, normalize, growthRateYoy, perShareMetrics, leftAxisMetrics, rightAxisMetrics }) {
         metricsConfig.forEach(m => {
             const el = document.getElementById(`metric-${m.id}`);
             if (el) el.checked = metrics.includes(m.id);
@@ -440,9 +460,19 @@ function initFinancialChart({
             }
         });
         
-        const normEl = document.getElementById('global-normalize');
-        if (normEl) normEl.checked = !!normalize;
-        
+        // Accept an explicit transform, or derive it from the legacy boolean flags.
+        if (transform !== undefined) {
+            window.currentTransform = transform || null;
+        } else if (growthRateYoy) {
+            window.currentTransform = 'yoy';
+        } else if (normalize) {
+            window.currentTransform = 'normalize';
+        } else {
+            window.currentTransform = null;
+        }
+        if (window.updateTransformPills) window.updateTransformPills();
+
+
         if (startDate || endDate) {
             let sIdx = 0;
             let eIdx = commonLabelsGlobal.length - 1;
@@ -485,6 +515,17 @@ function initFinancialChart({
         );
         
         // Initial setup from window variables
+        // Seed the transform state so server-side normalize/growth_rate_yoy actually
+        // reach the chart. Previously this arrived as `initialTransform` but was
+        // destructured as `initialNormalize`, so it was silently dropped.
+        window.currentTransform = initialTransform || null;
+        if (window.updateTransformPills) window.updateTransformPills();
+
+        // Expose updateChart so the page's toggleTransform() can trigger a repaint.
+        // It guards with `if (window.updateChart)`, so without this the transform
+        // buttons updated their own CSS class and nothing else.
+        window.updateChart = updateChart;
+
         if (initialMetrics) {
             metricsConfig.forEach(m => {
                 const el = document.getElementById(`metric-${m.id}`);

@@ -33,82 +33,54 @@ class UIState(BaseModel):
     start_date: Optional[str] = Field(None, description="Recommended start date filter, e.g. '2018-01-01'")
     end_date: Optional[str] = Field(None, description="Recommended end date filter, e.g. '2022-12-31'")
 
-VALID_METRIC_KEYS = [
-    "price",
-    "revenue",
-    "cost_of_goods_sold",
-    "operating_income",
-    "net_income",
-    "operating_cash_flow",
-    "capex",
-    "free_cash_flow",
-    "selling_general_admin",
-    "research_development",
-    "stock_based_compensation",
-    "share_repurchase",
-    "cash_and_equivalents",
-    "total_debt",
-    "market_cap",
-    "enterprise_value",
-    "pe_ratio",
-    "ps_ratio",
-    "pfcf_ratio",
-    "pocf_ratio",
-    "shares_outstanding",
-    "dividends",
-    "dividend_yield",
-    "payout_ratio_fcf",
-    "payout_ratio_ocf",
-    "roic",
-    "operating_margin",
-    "profit_margin",
-    "gross_margin",
-    "roa",
-    "roe",
-    "ebitda",
-    "ev_ebitda"
-]
+from metrics_registry import VALID_METRIC_KEYS
 
 class ChartDataPoint(BaseModel):
+    """Historical data point with all available financial metrics.
+    Fields are kept in sync with METRICS_REGISTRY — see metrics_registry.py.
+    """
     date: str
     price: float
-    revenue: Optional[float] = Field(None, description="Aligned Revenue value")
-    cost_of_goods_sold: Optional[float] = Field(None, description="Aligned Cost of Goods Sold")
-    operating_income: Optional[float] = Field(None, description="Aligned Operating Income value")
-    net_income: Optional[float] = Field(None, description="Aligned Net Income value")
-    free_cash_flow: Optional[float] = Field(None, description="Aligned Free Cash Flow value")
-    roic: Optional[float] = Field(None, description="Aligned ROIC value")
-    
-    # Expanded Metrics
-    eps: Optional[float] = Field(None, description="Aligned EPS value")
-    capex: Optional[float] = Field(None, description="Aligned Capital Expenditures value")
-    operating_cash_flow: Optional[float] = Field(None, description="Aligned Operating Cash Flow value")
-    pe_ratio: Optional[float] = Field(None, description="Aligned P/E Ratio")
-    ps_ratio: Optional[float] = Field(None, description="Aligned P/S Ratio")
-    pfcf_ratio: Optional[float] = Field(None, description="Aligned P/FCF Ratio")
-    pocf_ratio: Optional[float] = Field(None, description="Aligned P/OCF Ratio")
-    shares_outstanding: Optional[float] = Field(None, description="Aligned Shares Outstanding")
-    dividends: Optional[float] = Field(None, description="Aligned TTM Dividends Paid")
-    dividend_yield: Optional[float] = Field(None, description="Aligned Dividend Yield TTM")
-    payout_ratio_fcf: Optional[float] = Field(None, description="Aligned Payout Ratio (FCF)")
-    payout_ratio_ocf: Optional[float] = Field(None, description="Aligned Payout Ratio (OCF)")
-    
-    # New metrics
-    selling_general_admin: Optional[float] = Field(None, description="Aligned Selling, General and Administrative value")
-    research_development: Optional[float] = Field(None, description="Aligned Research and Development value")
-    stock_based_compensation: Optional[float] = Field(None, description="Aligned Stock-Based Compensation value")
-    share_repurchase: Optional[float] = Field(None, description="Aligned Payments for Share Repurchases")
-    cash_and_equivalents: Optional[float] = Field(None, description="Aligned Cash and Cash Equivalents")
-    total_debt: Optional[float] = Field(None, description="Aligned Total Debt")
-    market_cap: Optional[float] = Field(None, description="Aligned Market Capitalization")
-    enterprise_value: Optional[float] = Field(None, description="Aligned Enterprise Value")
-    operating_margin: Optional[float] = Field(None, description="Aligned Operating Margin (%)")
-    profit_margin: Optional[float] = Field(None, description="Aligned Net Profit Margin (%)")
-    gross_margin: Optional[float] = Field(None, description="Aligned Gross Profit Margin (%)")
-    roa: Optional[float] = Field(None, description="Aligned ROA value")
-    roe: Optional[float] = Field(None, description="Aligned ROE value")
-    ebitda: Optional[float] = Field(None, description="Aligned EBITDA value")
-    ev_ebitda: Optional[float] = Field(None, description="Aligned EV/EBITDA ratio")
+
+    # Aggregates
+    revenue: Optional[float] = Field(None, description="Total revenue, TTM-aligned")
+    cost_of_goods_sold: Optional[float] = Field(None, description="Cost of goods sold")
+    operating_income: Optional[float] = Field(None, description="Operating income (EBIT)")
+    net_income: Optional[float] = Field(None, description="Net income after taxes")
+    operating_cash_flow: Optional[float] = Field(None, description="Cash flow from operations")
+    capex: Optional[float] = Field(None, description="Capital expenditures")
+    free_cash_flow: Optional[float] = Field(None, description="Free cash flow (OCF minus CapEx)")
+    selling_general_admin: Optional[float] = Field(None, description="SG&A expenses")
+    research_development: Optional[float] = Field(None, description="R&D expenses")
+    stock_based_compensation: Optional[float] = Field(None, description="Stock-based compensation expense")
+    share_repurchase: Optional[float] = Field(None, description="Payments for share repurchases")
+    cash_and_equivalents: Optional[float] = Field(None, description="Cash and cash equivalents")
+    total_debt: Optional[float] = Field(None, description="Total debt")
+    market_cap: Optional[float] = Field(None, description="Market capitalization")
+    enterprise_value: Optional[float] = Field(None, description="Enterprise value")
+    ebitda: Optional[float] = Field(None, description="EBITDA")
+
+    # Valuation Ratios
+    pe_ratio: Optional[float] = Field(None, description="P/E ratio (TTM)")
+    ps_ratio: Optional[float] = Field(None, description="P/S ratio (TTM)")
+    pfcf_ratio: Optional[float] = Field(None, description="P/FCF ratio")
+    pocf_ratio: Optional[float] = Field(None, description="P/OCF ratio")
+    ev_ebitda: Optional[float] = Field(None, description="EV/EBITDA ratio")
+
+    # Shareholder Return
+    shares_outstanding: Optional[float] = Field(None, description="Total shares outstanding")
+    dividends: Optional[float] = Field(None, description="TTM dividends paid")
+    dividend_yield: Optional[float] = Field(None, description="Dividend yield (TTM)")
+    payout_ratio_fcf: Optional[float] = Field(None, description="Payout ratio (FCF %)")
+    payout_ratio_ocf: Optional[float] = Field(None, description="Payout ratio (OCF %)")
+
+    # Performance & Efficiency
+    roic: Optional[float] = Field(None, description="Return on invested capital")
+    operating_margin: Optional[float] = Field(None, description="Operating margin (%)")
+    profit_margin: Optional[float] = Field(None, description="Net profit margin (%)")
+    gross_margin: Optional[float] = Field(None, description="Gross margin (%)")
+    roa: Optional[float] = Field(None, description="Return on assets (%)")
+    roe: Optional[float] = Field(None, description="Return on equity (%)")
 
 
 # LLM Generation Schemas

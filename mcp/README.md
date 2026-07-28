@@ -1,99 +1,150 @@
 # Fink MCP Tools Server
 
-The Fink MCP tools server exposes financial data gathering, processing, and interactive chart visualization capabilities as Model Context Protocol (MCP) tools.
+Exposes financial data retrieval, metric computation, and interactive chart
+visualization as Model Context Protocol tools, consumed by an Open WebUI agent.
 
 ---
 
-## 1. Supported User Workflows & Use Cases
+## 1. Supported Workflows
 
-1. **Asking for Stock Financials**: Users can ask for a stock's historical performance (e.g., *"Show me financials for UNH for the last 5 years"*). The LLM will trigger the fetch tools and mount the visualizer.
-2. **Conversation-Driven Chart Adjustments**: Users can refine the active chart directly through chat follow-ups without repeating the ticker (e.g., *"plot EPS instead"*, *"how about just the last 2 years?"*). The LLM resolves the context and triggers an in-place chart repaint.
-3. **Widget Controls Interaction**: Users can interact directly with the chart iframe using the timeline range sliders and metric checkboxes. The chart updates dynamically inside the web interface.
-
----
-
-## 2. Token-Efficient Data & Tool Architecture
-
-To prevent large financial statements from bloating the LLM's context window (saving tokens and protecting context limits), the tools coordinate efficiently:
-
-1. **`fink_openapi_mcp_tool_alphavantage_post`**:
-   * **Purpose**: Fetches financial statements (Income Statement, Balance Sheet, Cash Flow, monthly adjusted prices) for a given ticker from Alpha Vantage and writes it directly to the local SQLite DB cache inside the container.
-   * **API**: `ticker: str` -> returns a status confirmation message, **not** the raw dataset. The LLM only receives confirmation that data is cached, keeping the context clean.
-2. **`visualization_embed_native`**:
-   * **Purpose**: Generates and mounts an interactive Chart.js financial analytics chart for the Svelte interface.
-   * **API**: `ticker: str, selected_metrics: list, start_year: int, end_year: int` -> returns an emitter event payload mounting the Svelte widget frame.
-   * **In-Place Updates**: If a chart is already active in the chat DOM, this tool triggers a client-side window message to update the parameters of the active frame in-place, rather than appending duplicate charts.
+1. **Stock financials** — *"Show me financials for UNH for the last 5 years."* The model
+   renders an interactive chart; if no metrics are named it gets a sensible default set.
+2. **Conversation-driven adjustment** — *"plot EPS instead"*, *"just the last 2 years"*,
+   *"normalize that"*. The model re-invokes the tool with new parameters.
+3. **Direct widget interaction** — metric checkboxes, per-share toggles, left/right axis
+   selectors, a dual-thumb year slider, and Normalize / Growth Rate buttons all operate
+   client-side without a server round trip.
+4. **Quantitative analysis** — *"Why did AMZN's margins move in 2022?"* The model pulls
+   structured JSON and reasons over it, usually with a supporting chart.
 
 ---
 
-## 3. UI Design Alternatives Analysis
+## 2. Tools
 
-During development, multiple approaches to rendering the interactive HTML widgets inside Open WebUI were explored:
+Two tools, both auto-fetching on cache miss. Full schemas in [API_GUIDE.md](./API_GUIDE.md).
 
-| Design Alternative | How It Works | Why It Failed |
-| :--- | :--- | :--- |
-| **Raw HTML Markdown Injection** | The LLM returned raw HTML and `<script>` blocks embedded directly inside markdown code fences. | **Failed**: Markdown parsers and browser sanitation engines escaped the HTML tags and stripped `<script>` blocks for security, preventing the chart from executing. Additionally, serializing years of daily closing prices and financial statements into raw HTML inflated output payloads beyond the LLM's single-turn token output context size limits, resulting in truncated responses and broken tags. |
-| **Sandboxed Iframe mounting** | Loaded the generated HTML payload directly into standard container iframes. | **Failed**: Local relative stylesheet (`dashboard.css`) and Javascript libraries (`chart.js`, `chartUtils.js`) could not resolve, throwing network path errors. |
-| **Unified Svelte Native Embed & In-Place Updates (Winner)** | Registered a custom Svelte tool in Open WebUI that executes within the page origin. The tool mounts the iframe and intercepts loading. It uses client-side DOM checking (`window.parent`) to find and update any existing chart in-place. | **Success**: Safely loads all local JS/CSS files, supports animated transitions on checkbox/slider changes, and avoids chat feed duplicate clutter. |
+| Tool | Purpose | Returns |
+|---|---|---|
+| `visualize_html` | Interactive Chart.js dashboard | `<iframe srcdoc="...">` |
+| `compute_metrics` | Aligned historical metrics for reasoning | JSON string |
+
+Open WebUI calls them through two *native tool* wrappers, `visualize_native` and
+`compute_metrics_native`, which POST to the MCP server over HTTP (the server is wrapped
+by `mcpo` into an OpenAPI endpoint on port 8001).
+
+**Token efficiency.** `visualize_html` never returns the dataset. It writes a
+per-ticker `{ticker}-data.json` to the static directory and emits an iframe that fetches
+it in the browser, keeping years of monthly series out of the model's context.
+`compute_metrics` returns only the requested metrics and omits absent values.
+
+---
+
+## 3. UI Design Alternatives
+
+Approaches tried for rendering interactive widgets inside Open WebUI:
+
+| Approach | Outcome |
+| :--- | :--- |
+| **Raw HTML in markdown** | **Failed.** Markdown sanitisation stripped `<script>` blocks, and serializing years of data inline blew the single-turn output token limit, truncating the payload. |
+| **Sandboxed iframe** | **Failed.** Relative paths to `dashboard.css`, `chart.js` and `chartUtils.js` could not resolve. |
+| **Native tool + `embeds` event (current)** | **Works.** A Svelte-registered native tool emits an `embeds` event carrying the HTML; assets resolve against the page origin, and animated transitions work on checkbox and slider changes. |
+
+> An earlier revision of this document described in-place updating of an existing chart
+> via `window.parent` DOM inspection. **That was never implemented** — no such code
+> exists in any commit. Re-invoking the tool renders a new widget. Tracked in
+> [TECH_DEBT.md](./TECH_DEBT.md).
 
 ---
 
 ## 4. Directory Structure
 
-- `server.py`: Server entry point hosting tool registrations.
-- `requirements.txt`: Python package requirements.
-- `setup/`: Orchestration and deployment framework containing installer scripts, environment managers, and container provisioners (see [setup/README.md](file:///Users/ajitapte/.gemini/antigravity/scratch/fink/mcp/setup/README.md)).
-- `data/`: Financial data retrieval domain.
-  - `fetch_utils.py`: Fetches statements from Alpha Vantage API with SQLite cache fallback.
-  - `process_utils.py`: Computes financial statement analysis metrics.
-  - `models.py`: Data schemas.
-  - `alphavantage_cache.db`: Shared caching database.
-  - `alphavantage_tool.py`: Defines the `alphavantage` tool.
-- `visualization/`: Visual rendering domain.
-  - `chartUtils.js`: Client-side JavaScript Chart.js customization.
-  - `visualization_tool.py`: Generates the HTML widget layouts.
-- `tests/`: Automated unit, integration, and E2E browser tests.
+```
+mcp/
+├── server.py                  FastMCP entry point; registers the two tools
+├── metrics_registry.py        Single source of truth for all 33 metrics
+├── system_prompt.py           Agent system prompt (shared by seeding and tests)
+├── requirements.txt
+├── data/                      Retrieval and computation — see data/README.md
+│   ├── cache_orchestrator.py    cache_ticker_data(), per-ticker mutex
+│   ├── fetch_utils.py           SQLite cache I/O, AlphaVantage calls, FINK_DATA_MODE
+│   ├── alphavantage_tool.py     Fetch orchestration + error shaping
+│   ├── process_utils.py         Alignment, TTM, smoothing, corporate identity
+│   ├── models.py                Pydantic ChartDataPoint
+│   └── local_av_cache/          Seed corpus: AAPL, AMZN, NEE, PG, UNH
+├── visualization/
+│   ├── visualization_tool.py    Builds the dashboard HTML
+│   ├── chartUtils.js            Canonical chart logic (copied to open_webui/static/)
+│   ├── dashboard.css
+│   └── fink_*_native_tool.py    Open WebUI native tool wrappers
+├── setup/                     Deployment — see setup/README.md
+├── tests/                     64 tests — see §6
+└── docs/
+    └── REVENUE_SEGMENTS_RESTORATION.md
+```
 
 ---
 
-## 5. Automated Test Coverage
+## 5. Data Modes
 
-The test suite resides in the `tests/` directory and covers the complete lifecycle of data operations and visual rendering:
+`FINK_DATA_MODE` controls where financial data may come from:
 
-1. **MCP Server Registrations (`test_mcp_server.py`)**:
-   * Asserts FastMCP stdio server initialization, tool registration counts, and argument OpenAPI schema specs.
-2. **Data Pipeline Cache Flow (`test_cache_flow.py`, `test_alphavantage_tool.py`)**:
-   * Verifies the read-through database caching logic, checking write-offs, seed mock fallback lookups, and API key configurations.
-3. **Dynamic HTML Adapters (`test_visualization_tool.py`)**:
-   * Asserts that raw HTML generators correctly transform data coordinates, inject JSON parameter sets, and remove obsolete buttons.
-4. **Browser Widget Rendering (`test_e2e_widget.py`)**:
-   * Uses **Playwright** to spin up a headless Chromium instance, load the visualizer HTML page, serve mock JS/CSS libraries, and assert that the Chart.js canvas elements render and toggle metrics dynamically.
-5. **Container E2E LLM Tool Selection (`test_docker_e2e.py`)**:
-   * Verifies that the container's OpenAI endpoints successfully resolve tool schemas, invoke caching pipelines, and select custom visualizers strictly.
+| Mode | Resolution order | Set by |
+|---|---|---|
+| `live` (default) | SQLite cache → AlphaVantage API | `docker-compose.yml` |
+| `seed` | SQLite cache → `local_av_cache/` JSON → **raise** | `tests/conftest.py` |
 
----
+Seed mode never touches the network, so the suite is deterministic, consumes no API
+quota, and cannot pollute the shared cache. `mock_data=True` alone was insufficient —
+it only *prefers* the seed corpus and falls through to the network on a miss.
 
-## 6. Installation & Setup
+### Read-through cache
 
-For installation guides, host prerequisite setups, and container configuration instructions, please refer to the unified setup guide:
-
-👉 **[Go to setup/README.md](file:///Users/ajitapte/.gemini/antigravity/scratch/fink/mcp/setup/README.md)**
-
----
-
-## 7. Caching & Data Formats
-
-### Read-Through Cache Flow
 ```mermaid
 graph TD
-    A[Tool Call / Data Request] --> B{Check SQLite DB Cache}
-    B -- Valid Hit (Not Expired) --> C[Return Cached Data]
-    B -- Cache Miss / Expired --> D{Is mock_data Enabled?}
-    D -- Yes --> E{Check Seed JSON Cache}
-    E -- Found --> F[Write to SQLite DB Cache]
-    F --> C
-    E -- Not Found --> G[Fetch from Alpha Vantage API]
-    D -- No --> G
-    G --> H[Write to SQLite DB Cache]
-    H --> C
+    A[Tool call] --> B{SQLite cache valid?}
+    B -- hit --> C[Return cached]
+    B -- miss/expired/corrupt --> D{FINK_DATA_MODE}
+    D -- seed --> E{In local_av_cache?}
+    E -- yes --> F[Write to SQLite] --> C
+    E -- no --> G[raise OfflineDataUnavailable]
+    D -- live --> H[Fetch from AlphaVantage]
+    H --> I[Write to SQLite] --> C
+    H -- network error --> J[Fall back to stale entry, mark corrupt]
+```
+
+TTLs are derived per function from the gap between reported periods, so annual
+statements are not refetched daily.
+
+---
+
+## 6. Test Coverage
+
+64 tests. Invocations are in [setup/README.md](./setup/README.md#verification).
+
+| Tier | Files | Needs |
+|---|---|---|
+| Unit / integration | `test_alphavantage_tool`, `test_cache_flow`, `test_cache_orchestrator`, `test_edge_cases`, `test_visualization_tool`, `test_mcp_server` | nothing — fully offline |
+| Widget (Playwright) | `test_e2e_widget` | chromium |
+| Server-dependent | `test_e2e_tool_dispatch`, `test_e2e_llm_tool_loop`, `test_docker_e2e` | running containers, `OPENAI_API_KEY` |
+
+Notable coverage:
+
+- **Transform behavior** — Normalize and Growth Rate are asserted against real Chart.js
+  dataset *values*, not against strings in the HTML. The previous string-match tests
+  stayed green while the feature was entirely non-functional.
+- **Timeframe resolution** — `test_e2e_llm_tool_loop` builds the *production* system
+  prompt (rendering `{{CURRENT_DATE}}` as Open WebUI does) and asserts the resolved
+  year window, so prompt regressions are caught.
+- **Offline guarantee** — `test_seed_mode_never_reaches_the_network`.
+- `tests/conftest.py` puts `mcp/` on `sys.path` and forces seed mode, so a bare
+  `pytest mcp/tests/` behaves identically to the wrapper script.
+
+---
+
+## 7. Installation
+
+See **[setup/README.md](./setup/README.md)**. From the repository root:
+
+```bash
+./mcp/setup/setup.sh
 ```

@@ -98,10 +98,24 @@ def test_cache_corruptness_and_sync_refetch():
     conn.close()
     
     set_db_cache("UNH", "OVERVIEW", {"Error Message": "Fail"}, time.time(), time.time() + 86400, "api", is_corrupt=1)
-    
-    # Try fetching with mock_data=False (forces network which will fail in test env)
-    # It should fallback to the cached corrupt record and preserve is_corrupt=1
-    res_failed = get_all_data_for_ticker("UNH", mock_data=False)
+
+    # Force the network call to fail explicitly rather than relying on the absence of
+    # ALPHAVANTAGE_API_KEY. This test previously passed only because no key was set in
+    # the environment; once one is present the fetch succeeds, overwrites the corrupt
+    # record, and the assertion breaks for reasons unrelated to the cache logic.
+    import data.fetch_utils as fetch_utils
+
+    def _boom(function, symbol):
+        raise ConnectionError("simulated network failure")
+
+    original_fetch = fetch_utils.fetch_data
+    fetch_utils.fetch_data = _boom
+    try:
+        # Should fall back to the cached corrupt record and preserve is_corrupt=1
+        res_failed = get_all_data_for_ticker("UNH", mock_data=False)
+    finally:
+        fetch_utils.fetch_data = original_fetch
+
     assert "OVERVIEW" in res_failed["_meta_corrupt_functions"]
 
 if __name__ == "__main__":
