@@ -13,7 +13,9 @@ open_webui/static/*-data.json
 open_webui/static/chartUtils.js
 mcp/scratch/scratchpad/
 
-# Local verification helper and its output (not part of the repo)
-verify.sh
+# Output from mcp/tests/verify.sh
 verify.log
 verify-deploy.log
+# Superseded root-level copy of the runner; the tracked one is mcp/tests/verify.sh.
+# Leading slash anchors this to the repo root so it does not match the tracked script.
+/verify.sh

@@ -93,31 +93,24 @@ Re-templates, re-syncs, re-seeds and restarts without rebuilding host dependenci
 
 ## Verification
 
-From the repository root.
-
-**Tier 1 — unit, integration and widget tests.** Fully offline: `tests/conftest.py`
-forces `FINK_DATA_MODE=seed`, so no AlphaVantage quota is consumed and runtime is
-deterministic.
+`mcp/tests/verify.sh` is the developer test runner. Note it is a development loop tool,
+not a post-install smoke test — `--deploy` re-provisions the container, and the tests
+need the venv and Playwright browsers from `setup_host.sh`.
 
 ```bash
-venv/bin/pytest mcp/tests/ -v \
-  --ignore=mcp/tests/test_docker_e2e.py \
-  --ignore=mcp/tests/test_e2e_tool_dispatch.py \
-  --ignore=mcp/tests/test_e2e_llm_tool_loop.py
+./mcp/tests/verify.sh              # unit, integration, widget — offline, no credentials
+./mcp/tests/verify.sh --with-llm   # additionally run the paid OpenAI dispatch tests
+./mcp/tests/verify.sh --deploy     # re-provision, wait for health, then server tests
 ```
 
-**Tier 2 — server-dependent tests.** Requires the containers to be running and
-`OPENAI_API_KEY` to be exported. Note `test_e2e_llm_tool_loop.py` calls the OpenAI API
-directly, so these cost real money; they skip if the key is unset.
+The default run needs no API keys: tier 1 is offline via `FINK_DATA_MODE=seed`
+(`tests/conftest.py`), and the container tests use a fixed dev key. The OpenAI dispatch
+tests in `test_e2e_llm_tool_loop.py` call the API directly and **cost real money**, so
+they are opt-in — without `--with-llm` they skip themselves.
 
-```bash
-./mcp/setup/setup_open_webui_container.sh
-set -a; . ./.env; set +a
-venv/bin/pytest mcp/tests/test_e2e_tool_dispatch.py \
-                mcp/tests/test_e2e_llm_tool_loop.py \
-                mcp/tests/test_docker_e2e.py -v
-```
+`--deploy` waits for both containers to report healthy before testing, and asserts that
+`FINK_DATA_MODE` reached the container and that the seeded prompt landed in
+`params.system` with its `{{CURRENT_DATE}}` token intact.
 
-Allow ~10s after provisioning for both containers to report healthy before running
-tier 2; `docker inspect -f '{{.State.Health.Status}}' fink-mcp-server` will say
-`healthy` when it is ready.
+Output goes to `verify.log` / `verify-deploy.log` at the repo root (gitignored). The
+script exits non-zero on failure, so `verify.sh && verify.sh --deploy` gates correctly.
