@@ -117,7 +117,10 @@ def fetch_data(function: str, symbol: str) -> dict:
     # Sleep to avoid AlphaVantage 1 request/sec limit
     time.sleep(2)
     
-    response = requests.get(url, timeout=5)
+    # 5s was too tight: a full TIME_SERIES_MONTHLY_ADJUSTED is several hundred
+    # KB and would intermittently time out, writing a corrupt entry that nothing
+    # ever retried.
+    response = requests.get(url, timeout=int(os.getenv("AV_HTTP_TIMEOUT", "30")))
     response.raise_for_status()
     data = response.json()
     
