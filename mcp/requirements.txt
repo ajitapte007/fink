@@ -1,10 +1,16 @@
 # Runtime dependencies for the MCP server image (mcp/setup/Dockerfile.mcp).
 # Test-only packages live in requirements-dev.txt so they don't ship to production.
 #
-# Pinned to the versions the suite was last verified green against. `mcp` and `fastmcp`
-# especially: server.py carries a sys.path shim to stop the local mcp/ directory
-# shadowing the mcp pip package, so an unexpected upgrade can break imports outright.
+# Pinned to the versions the suite was last verified green against.
 # Bump deliberately and re-run ./mcp/tests/verify.sh.
+#
+# On the mcp/ directory vs the `mcp` pip package: this used to collide, because
+# mcp/__init__.py made the directory a regular package that shadowed the SDK
+# whenever the repo root was on sys.path. That file was deleted 2026-08-03, so
+# mcp/ is now a namespace portion and the real package in site-packages wins
+# from any sys.path position. The sys.path shims in server.py, visualization_tool.py,
+# data/alphavantage_tool.py and tests/conftest.py remain — they exist so sibling
+# imports (`from data.…`, `from visualization.…`) resolve, not to dodge a collision.
 mcp==1.28.1
 fastmcp==3.4.4
 mcpo==0.0.20
