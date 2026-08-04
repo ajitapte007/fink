@@ -27,11 +27,14 @@ SEED = ["AAPL", "AMZN", "COST", "GOOGL", "NEE", "PG", "UNH", "WMT"]
 
 
 def scan_one(ticker: str) -> dict:
+    from mcp_apps.chartspec import spec_for
+    from mcp_apps.narrative import guidance_for
     from mcp_apps.data import adapters
     from mcp_apps.engine import scan, severity_of, strength_of
 
     result = scan(adapters.load_company(ticker))
     c = result["company"]
+    dates = c.dates()
 
     out = {
         "ticker": c.ticker,
@@ -43,7 +46,11 @@ def scan_one(ticker: str) -> dict:
         "checksRun": result.get("total_checks", 0),
         "declined": bool(result.get("declined")),
         "insufficient": bool(result.get("insufficient")),
-        "findings": [
+        # Named `clusters`, not `findings`, because that is what they are:
+        # correlated checks merged into one narrative row. `capital_cycle`
+        # carries roic_decline AND fcf_compression. Calling the list `findings`
+        # invited every reader to treat a row as a single check.
+        "clusters": [
             {
                 "id": cl["id"],
                 "headline": cl["headline"],
@@ -55,13 +62,39 @@ def scan_one(ticker: str) -> dict:
                 "detail": [m.detail for m in cl["members"]],
                 "benign": sorted({b for m in cl["members"] for b in m.benign}),
                 "followUp": cl["members"][0].follow_up,
+                # Which series this finding's claim rests on. Collected across
+                # every member so a cluster charts the whole story rather than
+                # only its top-scoring half — capital_cycle is roic_decline
+                # plus fcf_compression, and either alone under-explains it.
+                "chartSpec": spec_for(
+                    _merged_evidence(cl["members"]), dates),
             }
             for cl in result["clusters"]
         ],
         "skips": [{"question": s.question, "reason": s.reason}
                   for s in result.get("skips", [])],
     }
+    # How to read what is above. Hand-written and deterministic — see
+    # narrative.py for why it is not generated and why it ships in the result
+    # rather than the tool description.
+    out["guidance"] = guidance_for(out)
     return out
+
+
+class _MergedEvidence:
+    """A cluster's combined chart metrics, in member-score order."""
+
+    def __init__(self, names):
+        self.chart_metrics = names
+
+
+def _merged_evidence(members):
+    names = []
+    for m in members:
+        for n in m.chart_metrics:
+            if n not in names:
+                names.append(n)
+    return _MergedEvidence(names)
 
 
 def render(r: dict) -> str:
@@ -77,12 +110,12 @@ def render(r: dict) -> str:
         L.append("  missing denominators would produce confident nonsense.")
         return "\n".join(L)
 
-    if not r["findings"]:
+    if not r["clusters"]:
         L.append(f"  Nothing unusual. {r['checksRun']} checks ran and none cleared")
         L.append("  the significance floor. That is a result, not an empty state.")
         return "\n".join(L)
 
-    for f in r["findings"]:
+    for f in r["clusters"]:
         L.append(f"  [{f['direction'].upper()}] {f['headline']}")
         L.append(f"      signal {f['signal']}/10 ({f['severity']})  ·  "
                  f"checks: {', '.join(f['checks'])}")

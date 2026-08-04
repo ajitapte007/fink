@@ -27,12 +27,65 @@ would falsify it, and the system tells them when a falsifier trips.
 | 3 — fork `mcp/data`, engine, `adapters.py` | **done** |
 | 4 — `scan_fundamentals` returning real clusters | **done** |
 | 5 — findings-list view | **done** |
-| 6 — row click → follow-up question | **done — MVP complete, 101 tests green** |
-| 7-8 — chart view, controls | next |
+| 6 — row click → follow-up question | **done — MVP complete** |
+| 7 — chase: chartSpec + inline chart | **done** |
+| 8 — transforms, standalone chart, legends | **done** |
+| 9 — clusters rename + narrative guidance | **done, 181 tests green** |
+| next — thesis + falsifiers (Commit/Return) | |
 
 **MVP verified in Claude Desktop**: scan renders as a panel, findings rank
 correctly, clicking a row stages its follow-up question in the composer. The
 host stages rather than sends — its discretion, and the better default.
+
+**Chase is inline, not a second view.** Each finding carries two calls to
+action. "See chart" expands a Chart.js canvas *inside the panel*, fetching the
+series over `callServerTool` on the app-only `fink_metric_series` — no model
+round-trip, no second `ui://` resource, ~20KB that never enters the
+conversation. "Ask" stages the follow-up question. The two answer different
+questions — "is this real?" versus "what does it mean?" — so collapsing them
+into one click would force a guess about which the reader wanted.
+
+**Four chart views, one axis rule.** Actual / indexed to 100 / YoY / per share.
+Normalise is the one that fixes a real problem: dollars and rates cannot share
+an axis — a 1086bp ROIC collapse is a flat line beside revenue at
+$445bn — so the default uses two, and two axes make relative movement hard to
+compare. Indexing puts everything back on one. Under normalise **and** YoY the
+second axis is dropped, because same-unit series on split axes invite comparing
+positions that are not comparable. Per share is disabled where it is
+meaningless (margins, price, market cap). Toggling repaints from the cached
+payload; it never refetches.
+
+**Legends state unit and axis side** — "Operating Income ($, left)", "Stock
+Price ($, right)" — and describe what is *plotted*, not the metric underneath:
+under indexed everything reads "(indexed)", under YoY "(% YoY)". The side is
+omitted when there is only one axis. Price passes through the per-share view
+untouched, since it is already per share and is the context line the others are
+read against.
+
+**Two model-visible tools now.** `scan_fundamentals` (findings panel) and
+`chart_fundamentals` (standalone chart, for following a thread the scan did not
+raise). Both views splice the same `CHART_CORE` / `CHART_CSS` strings — a view
+is one self-contained document, so shared code is hoisted rather than
+duplicated, and a test asserts both carry the same transform implementation.
+
+`chartspec.py` maps engine names to chart metric ids and is the only place
+those vocabularies meet. Every check already declared its evidence in
+`Finding.chart_metrics`, so the chart shows what the check used rather than a
+generic set. An unmapped name **raises**: dropping it silently would render a
+chart missing the series its finding is about, which reads as the claim being
+unsupported.
+
+**The payload exposes clusters, and tells the model how to read them.**
+Renamed from `findings` — each row is correlated checks merged into one
+narrative row, and the old name invited treating a row as a single check.
+`narrative.py` adds a `guidance` block: deterministic, hand-written, matched to
+the situation (declined / clean / insufficient / clusters). It exists because
+the model otherwise reads 10/10 as severity rather than evidence strength,
+recites benign explanations rather than weighing them, narrates a cluster's
+members as separate problems, and blends recollection with computed fact. The
+discipline is carried over from the POC's bull/bear prompt, which the port
+initially lost. It ships in the result, not the tool description — a
+description costs context every turn, a result costs it once.
 
 **Prototype scaffolding is gone.** `fink_hello`, `fink_echo`, the hello view
 and `check_{sdk,app_param,fastmcpapp}.py` were all removed after phases 4-6.
@@ -139,8 +192,11 @@ NOPAT over invested capital, which is what the POC used and what GOOGL's
 
 ## Engine
 
-Ported from a standalone POC. Eight checks over six questions, scored,
-clustered, floored, capped at 5. Returns **`clusters`**, not a flat findings
+Ported from a standalone POC. Eight checks across seven questions, scored,
+clustered, floored at 1.0, capped at 5. **Documented for readers in
+`README.md`** — the check table, the scoring formula and the cluster
+membership. `test_readme_accuracy.py` asserts those against the constants, so
+retuning a weight without updating the doc fails the suite. Returns **`clusters`**, not a flat findings
 list — correlated checks merge into one narrative row.
 
 Design rules that matter:

@@ -61,7 +61,25 @@ The project is organized into three main files:
 
 ---
 
+## Where things live
+
+| Directory | What it is | Status |
+|---|---|---|
+| [`mcp_apps/`](mcp_apps/README.md) | **MCP Apps server for Claude Desktop.** Conversational due diligence: an anomaly scan rendered as an interactive panel, with charts of the evidence behind each finding. | active |
+| `mcp/` | MCP server for Open WebUI, using the rich-embed convention. | legacy — see [`mcp_apps/data/README.md`](mcp_apps/data/README.md) for the migration policy |
+| `open_webui/` | Earlier Open WebUI integration. | superseded by `mcp/` |
+| `index.html` | The original browser-only charting tool this README describes below. | standalone |
+
+**Start with [`mcp_apps/README.md`](mcp_apps/README.md)** — setup, the tool
+API, and how to test it in Claude Desktop.
+
+---
+
 ## Backend Architecture & MCP Server
+
+> **Note:** this section describes `mcp/`, the Open WebUI server. The data
+> layer was forked to `mcp_apps/data` on 2026-08-03 and has since diverged —
+> see [`mcp_apps/data/README.md`](mcp_apps/data/README.md).
 
 Fink implements a Model Context Protocol (MCP) server that exposes optimized tools for stock financial research and visualization to LLM agents (such as Open WebUI).
 
