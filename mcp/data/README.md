@@ -2,6 +2,33 @@
 
 Fetching, caching, and serving financial data.
 
+> ## ⚠️ Legacy — feature work happens in `mcp_apps/data`
+>
+> This module was **forked to `mcp_apps/data` on 2026-08-03**. It stays here to
+> keep the Open WebUI server running and receives **security and correctness
+> fixes only**.
+>
+> **One-way door.** Fixes flow from here *to* the fork, never back. If a bug
+> exists in both, fix `mcp_apps/data` first and port here only if Open WebUI is
+> actually affected. Nothing is backported for symmetry.
+>
+> **Frozen assets.** `local_av_cache/` is frozen at its current contents —
+> `reseed_cache.py` now runs against `mcp_apps/data/alphavantage/`. This
+> module's SQLite database is unchanged and stays here; the fork owns a
+> separate one so it can be packaged self-contained. Pointing both at the same
+> `$ALPHAVANTAGE_CACHE_DB` still shares one file if you want to conserve the
+> 25-calls/day free tier.
+>
+> **Exit condition.** `mcp/` is deleted once `mcp_apps` ships the chart view at
+> parity with `mcp/visualization` and nobody is running the Open WebUI
+> container. Nothing outside `mcp/` imports it, so there is no other blocker.
+>
+> **Precedent.** This is the second fork of this code. The first —
+> `open_webui/alphavantage` → `mcp/data`, commit `40fec91` — had no stated
+> policy and drifted 243 lines without anyone choosing to.
+>
+> Full policy: `mcp_apps/data/README.md`.
+
 ## Architecture
 
 ```
