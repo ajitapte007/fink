@@ -24,14 +24,20 @@ would falsify it, and the system tells them when a falsifier trips.
 | 0 — SDK choice | done: standalone `fastmcp` 3.4.4 |
 | 1 — package skeleton, `_bootstrap` | done |
 | 2 — `ui://` renders in Claude Desktop | **done, committed** |
-| 3 — fork `mcp/data`, engine, `adapters.py` | **done, 84 tests green** |
-| 4 — `scan_fundamentals` returning real clusters | next |
-| 5 — findings-list view | |
-| 6 — row click → `ui/message` | MVP ends here |
-| 7-8 — chart view, controls | |
+| 3 — fork `mcp/data`, engine, `adapters.py` | **done** |
+| 4 — `scan_fundamentals` returning real clusters | **done** |
+| 5 — findings-list view | **done** |
+| 6 — row click → follow-up question | **done — MVP complete, 101 tests green** |
+| 7-8 — chart view, controls | next |
 
-Phase 4 is a thin wrapper: `adapters.load_company` → `engine.scan` → a dict.
-Both halves exist and are tested; nothing new has to be figured out.
+**MVP verified in Claude Desktop**: scan renders as a panel, findings rank
+correctly, clicking a row stages its follow-up question in the composer. The
+host stages rather than sends — its discretion, and the better default.
+
+**Prototype scaffolding is gone.** `fink_hello`, `fink_echo`, the hello view
+and `check_{sdk,app_param,fastmcpapp}.py` were all removed after phases 4-6.
+Their conclusions are recorded in the server docstring; keeping the scripts
+added a second tool to the model's list for no live benefit.
 
 ## Hard-won facts (do not re-derive)
 
@@ -61,6 +67,27 @@ hours; `view_html()` in server.py now makes the handshake structural and
 
 **Bisected and irrelevant:** the `.html` URI suffix (every published example
 has one; not required) and `visibility: ["model"]` on entry-point tools.
+
+**Read the ext-apps `.d.ts` before calling anything.** Two bugs came from not
+doing so, and both were silent in different ways:
+
+- `sendMessage({content: text})` was malformed — `role` is required and
+  `content` is an array of typed blocks. A bad request on a live JSON-RPC
+  channel is a protocol violation, not a no-op: the host dropped the whole
+  connection and the panel reported "unable to reach fink-apps", which reads
+  like a server crash. Correct shape:
+  `{role: "user", content: [{type: "text", text}]}`.
+- `notifySizeChanged` does not exist (it is `sendSizeChanged`). Optional
+  chaining meant it no-oped silently for three phases. It is also unnecessary:
+  `autoResize` defaults to true and the App watches `document.body` itself.
+
+`test_no_unverified_host_methods_are_invoked` now enumerates the real App
+surface and fails on anything outside it.
+
+**Useful methods not yet used:** `updateModelContext()` (offload a large series
+into model context without a tool result — wanted for the chart),
+`createSamplingMessage()`, `requestDisplayMode()` for fullscreen/pip,
+`getHostCapabilities()`.
 
 **`mcp/__init__.py` was deleted** — it made `mcp/` a regular package that
 shadowed the pip SDK whenever the repo root was on `sys.path`. Now a namespace
@@ -135,7 +162,7 @@ invested capital doubled, plus negative quarterly FCF — clusters as
 
 ## Testing
 
-`./mcp_apps/tests/verify.sh` — 84 tests, offline, no credentials, ~6s.
+`./mcp_apps/tests/verify.sh` — 101 tests, offline, no credentials, ~6s.
 Separate from `mcp/tests/verify.sh`, which needs Docker. Both must stay green
 independently; that is the executable form of the migration policy.
 
