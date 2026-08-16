@@ -22,7 +22,7 @@ would falsify it, and the system tells them when a falsifier trips.
 | Phase | State |
 |---|---|
 | 0 — SDK choice | done: standalone `fastmcp` 3.4.4 |
-| 1 — package skeleton, `_bootstrap` | done |
+| 1 — package skeleton, `_bootstrap` | done; both retired in 10a |
 | 2 — `ui://` renders in Claude Desktop | **done, committed** |
 | 3 — fork `mcp/data`, engine, `adapters.py` | **done** |
 | 4 — `scan_fundamentals` returning real clusters | **done** |
@@ -31,7 +31,39 @@ would falsify it, and the system tells them when a falsifier trips.
 | 7 — chase: chartSpec + inline chart | **done** |
 | 8 — transforms, standalone chart, legends | **done** |
 | 9 — clusters rename + narrative guidance | **done, 181 tests green** |
+| 10a — buildable as a wheel | **done** |
+| 10b — distribution, licence, repo split | **parked** — see `phase10-PARKED-distribution.md` |
 | next — thesis + falsifiers (Commit/Return) | |
+
+### Phase 10a decisions, so they are not re-derived
+
+**`FINK_SDK=official` removed.** Phase 0 tested both SDKs on the wire and found
+them identical here: `_meta` survives round-trip, `visibility: ["app"]` is
+honoured, CSP `resourceDomains` is honoured. Keeping the branch meant a fourth
+dependency (`mcp`) and a second code path nothing exercised. The finding is
+preserved in `server.py`'s module docstring; the branch is not. If a host ever
+requires the official SDK, the change is two lines and the equivalence still
+holds.
+
+**`_bootstrap.py` deleted.** It put the legacy `mcp/` directory on `sys.path`
+for sibling imports that phase 3 ended. Installed, `site-packages/mcp_apps/../mcp`
+resolves to the pip MCP SDK, and inserting it at `sys.path[0]` would shadow the
+package `fastmcp` needs — the same collision deleted in phase 3, from the other
+direction.
+
+**But the repo-root `sys.path` insert stayed**, now behind
+`if __package__ in (None, "")`. It is what makes `python mcp_apps/server.py`
+work with no package context, which is exactly what the README and the current
+Claude Desktop config do. Deleting the whole block would produce
+`ModuleNotFoundError: mcp_apps` at startup — and Claude Desktop reports a
+server that failed to start as nothing at all. The test suite will not catch
+this: it imports the module, so it only exercises the package path. Check both
+invocations by hand.
+
+**Version single-sourced** in `mcp_apps/__init__.py`. `pyproject.toml` reads it
+via `[tool.setuptools.dynamic]`, `server.py` interpolates it into the view's
+`App()` constructor. `__commit__` is stamped at release time and deliberately
+left `"unknown"` in git — see the parked doc for why.
 
 **MVP verified in Claude Desktop**: scan renders as a panel, findings rank
 correctly, clicking a row stages its follow-up question in the composer. The

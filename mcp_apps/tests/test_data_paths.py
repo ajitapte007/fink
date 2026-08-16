@@ -69,20 +69,51 @@ def test_db_path_honours_the_env_var_at_call_time(tmp_path, monkeypatch):
         "get_db_path cached the env var instead of re-reading it")
 
 
-def test_db_path_falls_back_beside_the_cache_module(monkeypatch):
-    """With no env var, this package owns a database inside itself.
+def test_db_path_falls_back_to_a_per_user_data_directory(monkeypatch):
+    """With no env var, the database lives outside the package.
 
-    Self-containment is the property that makes `mcp_apps` packageable, and it
-    is the reason the legacy `/app/backend/data` probe was removed: that path
-    only exists inside the Open WebUI container, which this server never runs
-    in.
+    This assertion used to be the exact opposite, on the reasoning that
+    self-containment is what makes `mcp_apps` packageable. That conflated two
+    different things. Self-containment of *code* is what makes it packageable;
+    putting *state* inside the package is what breaks it once installed, and
+    the old test encoded the bug rather than the requirement.
+
+    Installed, `Path(__file__).parent` is inside site-packages. Three ways that
+    bites: site-packages is read-only in managed and containerised
+    environments, so every scan fails on write; an uninstall leaves an orphan
+    file the package manager did not create; and `uvx` — the install path being
+    documented — runs from an ephemeral environment under `~/.cache/uv`, so the
+    accumulated cache can vanish whenever uv rebuilds it. That last one is
+    silent and costs quota, since re-fetching is 5 API calls per ticker against
+    a free tier of 25 a day.
+
+    Found by installing the wheel and running it from /tmp. No test could have
+    caught it, because conftest sets ALPHAVANTAGE_CACHE_DB before importing the
+    module — correct for isolation, and it means this branch was never taken.
     """
     monkeypatch.delenv("ALPHAVANTAGE_CACHE_DB", raising=False)
     resolved = cache.get_db_path()
-    assert resolved == DATA_DIR / "alphavantage_cache.db"
-    assert DATA_DIR in resolved.parents, (
-        "the default cache must live inside the package, or mcp_apps cannot be "
-        "shipped as a self-contained unit")
+
+    assert resolved.name == cache.DEFAULT_DB_NAME
+    assert DATA_DIR not in resolved.parents, (
+        "the default cache resolved inside the package; installed, that is "
+        "site-packages")
+    assert resolved.parent.name == cache.APP_DIR_NAME
+    assert cache.default_data_dir() in resolved.parents or \
+        resolved.parent == cache.default_data_dir()
+
+
+def test_the_data_directory_is_not_a_purgeable_cache_location():
+    """`Application Support`, not `Caches`, and `XDG_DATA_HOME`, not
+    `XDG_CACHE_HOME`.
+
+    Both of those are places the OS may reclaim without asking. Rebuilding this
+    file costs 5 Alpha Vantage calls per ticker against a 25/day free tier, so
+    a purge is not a transparent slowdown — it is a day of not being able to
+    scan. The file is named a cache; it is treated as data on purpose.
+    """
+    d = str(cache.default_data_dir())
+    assert "Caches" not in d and ".cache" not in d, d
 
 
 def test_db_path_does_not_touch_the_filesystem_to_decide(monkeypatch, tmp_path):
@@ -92,14 +123,31 @@ def test_db_path_does_not_touch_the_filesystem_to_decide(monkeypatch, tmp_path):
     call just to pick a path — and `get_db_cache`/`set_db_cache` resolve afresh
     each time, 12 times to load a single ticker. Beyond the waste, a resolver
     with side effects is one that can fail for reasons unrelated to its answer.
+
+    Watching only the cwd was not enough. When the default moved to a per-user
+    data directory, `get_db_path` briefly did a `mkdir` there — reintroducing
+    exactly the side effect this test names — and this test still passed,
+    because the mkdir happened in ~/Library rather than in tmp_path. It was
+    watching the wrong directory. Assert on the calls themselves instead.
     """
     import os
 
     monkeypatch.delenv("ALPHAVANTAGE_CACHE_DB", raising=False)
     before = set(os.listdir(tmp_path))
     monkeypatch.chdir(tmp_path)
+
+    calls = []
+    for name in ("mkdir", "touch"):
+        monkeypatch.setattr(Path, name,
+                            lambda self, *a, n=name, **k: calls.append((n, self)))
+    real_connect = cache.sqlite3.connect
+    monkeypatch.setattr(cache.sqlite3, "connect",
+                        lambda *a, **k: calls.append(("connect", a)) or real_connect(":memory:"))
+
     for _ in range(5):
         cache.get_db_path()
+
+    assert not calls, f"get_db_path touched the filesystem: {calls}"
     assert set(os.listdir(tmp_path)) == before, (
         "get_db_path created something on disk; it should only read env")
 

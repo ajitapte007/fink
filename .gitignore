@@ -16,10 +16,18 @@ mcp/scratch/scratchpad/
 # Output from the test runners:
 #   verify.log        mcp/tests/verify.sh
 #   verify-deploy.log mcp/tests/verify.sh --deploy
-#   verify-apps.log   mcp_apps/tests/verify.sh
+#   verify-apps.log    mcp_apps/tests/verify.sh
+#   verify-package.log mcp_apps/tests/verify-package.sh
 verify.log
 verify-deploy.log
 verify-apps.log
+verify-package.log
 # Superseded root-level copy of the runner; the tracked one is mcp/tests/verify.sh.
 # Leading slash anchors this to the repo root so it does not match the tracked script.
 /verify.sh
+
+# Build artifacts from `python -m build`. Added before the first build rather
+# than after noticing 4 MB in git status.
+dist/
+build/
+*.egg-info/

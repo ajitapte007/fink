@@ -1,0 +1,67 @@
+# Packaging for `mcp_apps` only.
+#
+# At the repo root because build backends read the root, and `packages` below
+# is what keeps agent/, gepa/, community_analysis/, mcp/ and open_webui/ out of
+# the distribution. This file describes one project inside a monorepo; it is
+# not a manifest for the repo.
+#
+# No `license` field yet — it needs setuptools>=77 (PEP 639) and a LICENSE file
+# to exist, and both belong with publishing. See phase10-PARKED-distribution.md.
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fink-apps"
+description = "Conversational financial due diligence as an MCP App"
+readme = "mcp_apps/README.md"
+# Not conservatism: the code uses PEP 604 unions (`str | None`) and PEP 585
+# generics (`list[float]`) in runtime annotation positions. On 3.9 that is a
+# SyntaxError, so declaring the floor turns an import-time crash into a legible
+# refusal from pip.
+requires-python = ">=3.10"
+dynamic = ["version"]
+
+# Bounded ranges, not pins. `fastmcp==3.4.4` would conflict with anything else
+# in a user's environment; `>=3.4,<4` takes patches and excludes the next major.
+dependencies = [
+    "fastmcp>=3.4,<4",
+    "pydantic>=2.9,<3",
+    "requests>=2.31",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "build"]
+
+[project.scripts]
+fink-apps = "mcp_apps.server:main"
+fink-scan = "mcp_apps.scan_cli:main"
+
+[tool.setuptools]
+# Explicit, not `find`. Auto-discovery in a monorepo this shape either sweeps
+# in siblings or fails with an ambiguity error; naming four packages is boring
+# and correct. `mcp_apps.tests` is absent deliberately — the suite assumes the
+# repo layout, and shipping it invites running a suite whose fixtures are not
+# there.
+packages = [
+    "mcp_apps",
+    "mcp_apps.data",
+    "mcp_apps.data.alphavantage",
+    "mcp_apps.engine",
+]
+
+[tool.setuptools.dynamic]
+version = { attr = "mcp_apps.__version__" }
+
+[tool.setuptools.package-data]
+# `*.json` is deliberate and must not be widened.
+# mcp_apps/data/alphavantage_cache.db exists on disk. It is gitignored so it
+# never reached git, but a `*` glob here would ship the developer's own fetch
+# history to every user. A glob that matches nothing produces NO warning, so
+# the wheel-contents check is the only thing standing between that and a
+# release.
+"mcp_apps.data.alphavantage" = ["local_av_cache/*.json"]
+# One file, named. STATE.md and data/README.md live inside mcp_apps/ and would
+# ship the moment this became "*.md".
+"mcp_apps" = ["README.md"]

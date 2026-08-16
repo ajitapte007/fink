@@ -31,7 +31,7 @@ is a real result rather than an empty state.
 
 ## Quick start
 
-**Requires** Python 3.11+, Claude Desktop, and this repo cloned.
+**Requires** Python 3.10+, Claude Desktop, and this repo cloned.
 
 **1. Install dependencies**
 
@@ -200,9 +200,16 @@ every TTM number becomes a four-month sum of carried-forward values: about a
 third of the truth, with no gap, no `None`, and nothing raised.
 
 **The cache is offline-first.** SQLite → seed JSON → network, and in
-`FINK_DATA_MODE=seed` the last step raises instead. This package owns its own
-database; `mcp/` has a separate one. Point both at the same
-`ALPHAVANTAGE_CACHE_DB` if you want them to share.
+`FINK_DATA_MODE=seed` the last step raises instead.
+
+The database lives in a per-user data directory, **never inside the package** —
+`~/Library/Application Support/fink/` on macOS, `$XDG_DATA_HOME/fink/` or
+`~/.local/share/fink/` elsewhere, `%LOCALAPPDATA%\fink\` on Windows. It is
+created on first use and needs no configuration.
+
+Set `ALPHAVANTAGE_CACHE_DB` to override the location. That is also how you
+share one file with the legacy `mcp/` server, which keeps a separate database
+by default — point both at the same path.
 
 ---
 

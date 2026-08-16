@@ -30,8 +30,10 @@ is still the reason this file is shaped the way it is:
   5. CSP `resourceDomains` is honoured — the unpkg import of the ext-apps SDK
      succeeds when declared, and the sandbox blocks it when not.
 
-  6. Standalone fastmcp and the official SDK behave identically here. fastmcp
-     is used because mcp/server.py already depends on it.
+  6. Standalone fastmcp and the official SDK behave identically here — tested
+     on the wire in phase 0. fastmcp is the only one now: the FINK_SDK=official
+     branch was removed in phase 10a rather than carry a second dependency and
+     a code path nothing exercises.
 
 Phase 3 added the data layer; phases 4-6 the scan tool, its view, and
 the click-to-ask loop. app.callServerTool() is proven.
@@ -41,22 +43,31 @@ the click-to-ask loop. app.callServerTool() is proven.
 """
 from __future__ import annotations
 
-# Must precede any sibling import. Works both as `python -m mcp_apps.server`
-# (package context, relative import) and `python mcp_apps/server.py` (no
-# package context, so put the repo root on sys.path and import absolutely).
-try:
-    from . import _bootstrap  # noqa: F401
-except ImportError:
+# Run as a script (`python mcp_apps/server.py`) and there is no package
+# context, so `mcp_apps` is not importable until the repo root is on sys.path.
+# Claude Desktop's config uses exactly that form, so this cannot be dropped
+# until every caller runs the installed console script instead.
+#
+# This used to import _bootstrap, which additionally put the legacy `mcp/`
+# directory on sys.path for sibling imports. Phase 3 ended those, and once
+# installed `site-packages/mcp_apps/../mcp` is the pip MCP SDK — inserting it
+# at sys.path[0] would shadow the package `from fastmcp import ...` resolves
+# through. Deleted with _bootstrap.py.
+if __package__ in (None, ""):
     import sys as _sys
     from pathlib import Path as _Path
     _sys.path.insert(0, str(_Path(__file__).resolve().parent.parent))
-    from mcp_apps import _bootstrap  # noqa: F401
 
 import argparse
 import asyncio
 import json
 import os
 import sys
+
+# Absolute, not relative: this module is imported both as `mcp_apps.server`
+# and executed as a script, and the sys.path guard above makes the absolute
+# form work in either case.
+from mcp_apps import __commit__, __version__
 
 SERVER_NAME = "fink-apps"
 APP_MIME = "text/html;profile=mcp-app"
@@ -68,13 +79,7 @@ CHART_URI = "ui://fink/chart"
 EXT_APPS = "https://unpkg.com/@modelcontextprotocol/ext-apps@1.7.0/app-with-deps"
 EXT_APPS_ORIGIN = "https://unpkg.com"
 
-#   FINK_SDK=fastmcp   standalone fastmcp 3.4.4  (default, matches mcp/server.py)
-#   FINK_SDK=official  mcp.server.fastmcp 1.28.1
-SDK = os.getenv("FINK_SDK", "fastmcp").strip().lower()
-if SDK == "official":
-    from mcp.server.fastmcp import FastMCP
-else:
-    from fastmcp import FastMCP
+from fastmcp import FastMCP
 
 
 # --------------------------------------------------------------------------
@@ -142,7 +147,7 @@ def view_html(title: str, body: str, script: str = "") -> str:
     let app = null;
     try {{
       const mod = await import("{EXT_APPS}");
-      app = new mod.App({{ name: "fink", version: "0.1.0" }});
+      app = new mod.App({{ name: "fink", version: "{__version__}" }});
       // Buffer as well as dispatch. The view's own script runs after
       // connect() returns, so a result delivered during the handshake would
       // arrive before __finkOnToolResult exists and be dropped -- producing a
@@ -974,9 +979,6 @@ def scan_view() -> str:
 # --------------------------------------------------------------------------
 async def selftest() -> int:
     """In-memory round trip: exactly the payload a host receives."""
-    if SDK == "official":
-        print("selftest uses fastmcp's in-memory Client; rerun without FINK_SDK.")
-        return 0
     from fastmcp import Client
 
     ok = True
@@ -1046,7 +1048,12 @@ def main() -> int:
 
     if args.selftest:
         return asyncio.run(selftest())
-    print(f"[fink-apps] SDK={SDK}", file=sys.stderr)
+    # Claude Desktop captures stderr to
+    # ~/Library/Logs/Claude/mcp-server-fink-apps.log, so this identifies the
+    # process that actually ran — not a healthy neighbour started by hand.
+    print(f"[fink-apps] {__version__}+{__commit__} py{sys.version_info.major}."
+          f"{sys.version_info.minor}.{sys.version_info.micro} "
+          f"mode={os.getenv('FINK_DATA_MODE', 'unset')}", file=sys.stderr)
     if args.http:
         mcp.run(transport="http", port=args.port)
         return 0
